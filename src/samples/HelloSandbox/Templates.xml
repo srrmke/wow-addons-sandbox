@@ -1,0 +1,22 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/">
+  <!-- A reusable row template, applied from Lua with CreateFrame("Frame", nil, parent, "HelloRowTemplate") -->
+  <Frame name="HelloRowTemplate" virtual="true">
+    <Size x="260" y="22"/>
+    <Backdrop bgFile="Interface\Buttons\WHITE8X8">
+      <Color r="1" g="1" b="1" a="0.05"/>
+    </Backdrop>
+    <Layers>
+      <Layer level="ARTWORK">
+        <FontString parentKey="Label" inherits="GameFontHighlightSmall" justifyH="LEFT">
+          <Anchors><Anchor point="LEFT" x="8" y="0"/></Anchors>
+        </FontString>
+        <FontString parentKey="Value" inherits="GameFontNormalSmall" justifyH="RIGHT">
+          <Anchors><Anchor point="RIGHT" x="-8" y="0"/></Anchors>
+        </FontString>
+      </Layer>
+    </Layers>
+    <Scripts>
+      <OnLoad>self.Label:SetText("row")</OnLoad>
+    </Scripts>
+  </Frame>
+</Ui>

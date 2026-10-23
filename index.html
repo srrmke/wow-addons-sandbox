@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WoW Addon Sandbox</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23161a24'/%3E%3Cpath d='M16 5l3.2 7.2 7.8.8-5.8 5.3 1.7 7.7L16 22l-6.9 4 1.7-7.7L5 13l7.8-.8z' fill='%23e8c36a'/%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="top">
+        <div class="brand"><span class="glyph">✦</span><b>Addon Sandbox</b><span class="sub" id="source-label">no addon loaded</span></div>
+        <div class="actions">
+          <button id="btn-open" class="primary" title="Pick an addon folder (or an AddOns folder)">Open folder…</button>
+          <button id="btn-last" class="hidden" title="Reopen the last folder"></button>
+          <button id="btn-sample">Sample addon</button>
+          <button id="btn-reload" title="Reload all addons (also: /reload)">↻ Reload</button>
+          <span class="sep"></span>
+          <label class="field">Screen
+            <select id="res">
+              <option value="1280x720">1280 × 720</option>
+              <option value="1920x1080">1920 × 1080</option>
+              <option value="1024x768">1024 × 768</option>
+              <option value="2560x1080">2560 × 1080</option>
+            </select>
+          </label>
+          <label class="field">Zoom
+            <select id="zoom"><option value="fit">Fit</option><option value="1">100%</option><option value="0.75">75%</option><option value="0.5">50%</option></select>
+          </label>
+          <label class="check"><input type="checkbox" id="grid" /> Grid</label>
+          <label class="check" title="Reload automatically when files change (Chromium, needs a folder picked with this page)"><input type="checkbox" id="watch" checked /> Watch</label>
+        </div>
+      </header>
+
+      <main>
+        <section class="viewport">
+          <div class="stage-area" id="stage-area">
+            <div class="stage-sizer" id="stage-sizer">
+              <div class="stage" id="stage"></div>
+            </div>
+            <div class="empty" id="empty">
+              <div class="empty-card">
+                <h2>Drop an addon folder here</h2>
+                <p>Pick a folder containing a <code>.toc</code> file — or your whole <code>AddOns</code> folder. Edits to <code>.lua</code> / <code>.xml</code> files reload live.</p>
+                <p><button id="btn-sample-2" class="primary">Load the sample addon</button></p>
+              </div>
+            </div>
+          </div>
+          <form class="cmd" id="cmd-form">
+            <span class="prompt">/</span>
+            <input id="cmd" placeholder="slash command — e.g.  hello   ·   run print(UnitName('player'))   ·   reload" autocomplete="off" spellcheck="false" />
+            <span class="hint" id="status">starting…</span>
+          </form>
+        </section>
+
+        <aside class="side">
+          <nav class="tabs" id="tabs">
+            <button data-tab="console" class="on">Console <i id="err-count" class="badge hidden">0</i></button>
+            <button data-tab="events">Events</button>
+            <button data-tab="game">Game state</button>
+            <button data-tab="inspect">Inspector</button>
+            <button data-tab="addons">Addons</button>
+          </nav>
+
+          <div class="pane on" id="pane-console">
+            <div class="pane-bar">
+              <label class="check"><input type="checkbox" id="f-chat" checked /> chat</label>
+              <label class="check"><input type="checkbox" id="f-warn" checked /> warnings</label>
+              <label class="check"><input type="checkbox" id="f-err" checked /> errors</label>
+              <button id="btn-clear" class="mini">Clear</button>
+            </div>
+            <div class="log" id="log"></div>
+          </div>
+
+          <div class="pane" id="pane-events">
+            <p class="muted">Fire game events at your addon. Frames that registered the event receive it through <code>OnEvent</code>.</p>
+            <div class="chips" id="event-chips"></div>
+            <h4>Custom event</h4>
+            <form id="event-form" class="row">
+              <input id="event-name" placeholder="EVENT_NAME" spellcheck="false" />
+              <input id="event-args" placeholder="args, comma separated" spellcheck="false" />
+              <button class="mini">Fire</button>
+            </form>
+            <div class="log small" id="event-log"></div>
+          </div>
+
+          <div class="pane" id="pane-game">
+            <p class="muted">Mock world data returned by <code>UnitHealth</code>, <code>UnitName</code> and friends. Changing a value fires the matching event.</p>
+            <div id="game-form"></div>
+          </div>
+
+          <div class="pane" id="pane-inspect">
+            <div class="pane-bar"><button id="btn-tree" class="mini">Refresh</button><span class="muted" id="tree-hint">Click a frame to outline it on the stage.</span></div>
+            <div class="tree" id="tree"></div>
+            <div class="finfo" id="info"></div>
+          </div>
+
+          <div class="pane" id="pane-addons">
+            <div id="addon-list"></div>
+            <div class="pane-bar"><button id="btn-reset-sv" class="mini danger">Reset all SavedVariables</button></div>
+            <p class="muted">SavedVariables live in this browser (localStorage) and survive reloads, like <code>WTF/</code> would.</p>
+          </div>
+        </aside>
+      </main>
+    </div>
+    <input type="file" id="file-input" webkitdirectory multiple hidden />
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

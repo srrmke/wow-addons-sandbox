@@ -1,0 +1,9 @@
+## Interface: 110007
+## Title: Hello Sandbox
+## Notes: A tour of the sandbox: Lua frames, an XML template, events, tooltips and SavedVariables.
+## Author: sandbox
+## Version: 1.0
+## SavedVariables: HelloSandboxDB
+
+Templates.xml
+Core.lua
