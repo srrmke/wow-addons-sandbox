@@ -2,6 +2,8 @@
 
 A browser sandbox that runs World of Warcraft addons (Lua and XML) and renders their frames live, so you can see an addon's UI without launching the game. It reloads when you save files, and has a console, event firing, mock player data, slash commands and a frame inspector.
 
+![Addon Sandbox rendering a third-party addon](docs/preview.png)
+
 ```
 npm install
 npm run dev      # open the printed URL (Chrome/Edge recommended)
