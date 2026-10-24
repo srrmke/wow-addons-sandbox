@@ -23,6 +23,7 @@ The sandbox targets the **retail (mainline) client API** — modern frame templa
 
 | Client | Support |
 |---|---|
+| World of Warcraft: Forever | **Main target, planned.** A standalone flavour launching on November 4, 2026. Its addon API and TOC interface number aren't confirmed yet, so nothing is Forever-specific in the sandbox today. Support will be added once the client's API is known. |
 | Retail (Midnight) | Primary target. `GetBuildInfo()` currently reports 11.0.7 (The War Within) and is not yet updated to 12.x. |
 | Mists of Pandaria Classic, Classic Era, TBC Classic, Cataclysm Classic, Season of Discovery | Not specifically emulated. Addons that only use APIs shared with retail should run; Classic-only APIs and widgets are mostly missing. |
 
