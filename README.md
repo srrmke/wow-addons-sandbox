@@ -18,6 +18,16 @@ Click **Open folder…** (or drop a folder on the page) and choose an addon fold
 - XML templates (`virtual`, `inherits`, `parentKey`, `$parent`, `mixin`), common built-in templates (UIPanelButton, BasicFrame, UICheckButton, OptionsSlider, InputBox, scroll frames, …)
 - Mock game world (player/target units, combat, modifier keys), slash commands (`/run`, `/dump`, `/reload`, `SlashCmdList`), event firing panel, frame inspector
 
+## Game versions
+The sandbox targets the **retail (mainline) client API** — modern frame templates (`BackdropTemplate`, `BasicFrameTemplate`), `C_*` namespaces and mixins. It does not yet emulate the differences of other clients.
+
+| Client | Support |
+|---|---|
+| Retail (Midnight) | Primary target. `GetBuildInfo()` currently reports 11.0.7 (The War Within) and is not yet updated to 12.x. |
+| Mists of Pandaria Classic, Classic Era, TBC Classic, Cataclysm Classic, Season of Discovery | Not specifically emulated. Addons that only use APIs shared with retail should run; Classic-only APIs and widgets are mostly missing. |
+
+The `## Interface:` number in the `.toc` is read but not enforced, and multi-flavour TOC lists are accepted. Per-client TOC files (`Name_Mainline.toc`, `Name_Vanilla.toc`, …) are not selected yet — the plain `Name.toc` is used.
+
 ## Known limits
 - Blizzard art isn't shipped: known `Interface\` paths get a stylised stand-in, unknown ones a labelled placeholder. PNG/JPG/TGA files inside your addon render for real; BLP does not.
 - Lua 5.4 prints `5.0` for float results when concatenated with `..` (`print`, `tostring` and `string.format` are patched).
