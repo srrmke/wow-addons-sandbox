@@ -116,6 +116,11 @@ function applyZoom() {
 let zoomK = 1
 new ResizeObserver(applyZoom).observe($("stage-area"))
 $("zoom").addEventListener("change", applyZoom)
+$<HTMLSelectElement>("client").value = localStorage.getItem("wowsb:client") ?? "auto"
+$("client").addEventListener("change", () => {
+  try { localStorage.setItem("wowsb:client", $<HTMLSelectElement>("client").value) } catch { /* ignore */ }
+  void reload("Client changed", { rescan: false })
+})
 $("grid").addEventListener("change", (e) => stage.classList.toggle("grid", (e.target as HTMLInputElement).checked))
 
 $<HTMLSelectElement>("res").value = localStorage.getItem("wowsb:res") ?? "1280x720"
@@ -187,8 +192,9 @@ async function reload(reason: string, opts: { rescan?: boolean } = {}) {
     $("err-count").classList.add("hidden")
     addLog("info", `${reason}: loading ${addons.map((a) => a.name).join(", ")}`)
     const t0 = performance.now()
-    await runtime.boot(addons, { w: screen.w, h: screen.h, mock: typeof mock === "string" ? mock : undefined, sv: svCache })
-    setStatus(`loaded in ${Math.round(performance.now() - t0)} ms`, "ok")
+    await runtime.boot(addons, { client: $<HTMLSelectElement>("client").value, w: screen.w, h: screen.h, mock: typeof mock === "string" ? mock : undefined, sv: svCache })
+    const cl = runtime.client()
+    setStatus(`loaded in ${Math.round(performance.now() - t0)} ms · ${cl[2] ?? "retail"}`, "ok")
     refreshAddonList()
     buildGameForm()
     refreshTree()

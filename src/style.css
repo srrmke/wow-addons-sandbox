@@ -63,7 +63,7 @@ main { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1
 .stage .sub.bdbg, .stage .sub.fill { pointer-events: none; }
 .stage .sub.bdedge { inset: 0; pointer-events: none; }
 .stage .sub.fill { top: 0; bottom: 0; left: 0; }
-.stage .sub.input { background: transparent; border: 0; outline: 0; margin: 0; padding: 0; resize: none; }
+.stage .sub.input { overflow: hidden; background: transparent; border: 0; outline: 0; margin: 0; padding: 0; resize: none; }
 .stage .sub.msgs { inset: 0; overflow: hidden; pointer-events: none; white-space: pre-wrap; }
 .stage .f.round { overflow: hidden; background: radial-gradient(circle at 40% 35%, #4f7a46, #25401f 70%); box-shadow: inset 0 0 0 3px #3a2f18, inset 0 0 0 5px #a78a43; }
 .stage .f[data-type="Slider"] { cursor: pointer; }

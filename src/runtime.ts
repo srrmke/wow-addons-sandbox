@@ -53,7 +53,7 @@ export class Runtime {
   constructor(private host: RuntimeHost) {}
 
   /** Build a fresh Lua state and run every addon through its TOC. */
-  async boot(addons: Addon[], opts: { w: number; h: number; mock?: string; sv: Record<string, string> }) {
+  async boot(addons: Addon[], opts: { w: number; h: number; mock?: string; sv: Record<string, string>; client?: string }) {
     this.ready = false
     if (this.lua) { try { this.lua.global.close() } catch { /* already closed */ } }
     this.addons = addons
@@ -77,10 +77,11 @@ export class Runtime {
 
     await lua.doString(PRELUDE)
     for (const name of ["__Tick", "__Snapshot", "__Ver", "__FireEvent", "__Mouse", "__MouseMove", "__EditInput", "__Key", "__Slash", "__SetMock",
-      "__GetMock", "__DumpSV", "__FrameInfo", "__FrameTree", "__SetScreen", "__BeginAddon", "__RunFile", "__EndAddon"]) {
+      "__GetMock", "__DumpSV", "__FrameInfo", "__FrameTree", "__SetScreen", "__BeginAddon", "__RunFile", "__EndAddon", "__SetClient", "__GetClient"]) {
       this.fn[name] = lua.global.get(name) as LuaFn
     }
     this.call("__SetScreen", opts.w, opts.h)
+    this.call("__SetClient", opts.client ?? "auto")
     if (opts.mock) this.call("__SetMock", opts.mock)
 
     for (const a of addons) {
@@ -110,6 +111,8 @@ export class Runtime {
     const json = this.call("__Snapshot") as string | undefined
     return json ? (JSON.parse(json) as Snapshot) : null
   }
+  /** [detected client id, mode, label] */
+  client(): string[] { return String(this.call("__GetClient") ?? "").split("|") }
   fire(event: string, ...args: unknown[]) { this.call("__FireEvent", event, ...args) }
   mouse(id: number, ev: string, btn?: string, extra?: number) { this.call("__Mouse", id, ev, btn ?? "LeftButton", extra) }
   mouseMove(x: number, y: number) { this.call("__MouseMove", x, y) }

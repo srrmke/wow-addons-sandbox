@@ -137,7 +137,6 @@ function getglobal(n) return _G[n] end
 function setglobal(n, v) _G[n] = v end
 function nop() end
 function IsLoggedIn() return true end
-function GetBuildInfo() return "11.0.7", "58238", "Oct 23 2026", 110007 end
 function GetLocale() return "enUS" end
 function GetRealmName() return "Sandbox" end
 function GetNormalizedRealmName() return "Sandbox" end

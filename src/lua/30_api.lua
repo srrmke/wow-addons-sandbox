@@ -186,8 +186,48 @@ function CreateFromMixinsCallbackRegistry() return setmetatable({}, { __index = 
 -- Addons: registry, metadata, loading
 ---------------------------------------------------------------------------
 __addons = {}
+-- Client flavours: what GetBuildInfo() reports. All of them expose the Mainline API.
+local clients = {
+  retail = { "12.0.7", 120007, "Midnight (retail)" },
+  forever = { "1.60.1", 16001, "Forever" },
+  mop = { "5.5.0", 50500, "Mists of Pandaria Classic" },
+  tbc = { "2.5.6", 20506, "TBC Classic" },
+  era = { "1.15.4", 11504, "Classic Era" },
+}
+local clientRank = { forever = 5, retail = 4, mop = 3, tbc = 2, era = 1 }
+local clientMode, client, detectedRank = "auto", "retail", 0
+
+local function clientForInterface(n)
+  if n == 16001 then return "forever" end
+  if n >= 100000 then return "retail" end
+  if n >= 50000 then return "mop" end
+  if n >= 20000 and n < 30000 then return "tbc" end
+  if n >= 11000 and n < 12000 then return "era" end
+  return nil
+end
+
+function __SetClient(mode)
+  clientMode = mode
+  detectedRank = 0
+  if mode ~= "auto" and clients[mode] then client = mode else client = "retail" end
+  WOW_PROJECT_ID = 1 -- WOW_PROJECT_MAINLINE: Forever and retail both use the Mainline API
+  WOW_PROJECT_MAINLINE, WOW_PROJECT_CLASSIC = 1, 2
+end
+function __GetClient() return client .. "|" .. clientMode .. "|" .. clients[client][3] end
+
+function GetBuildInfo()
+  local c = clients[client]
+  return c[1], "00000", "Oct 23 2026", c[2], c[1], "release"
+end
+
 function __BeginAddon(name, metaJson, svJson)
   local meta = __unjson(metaJson) or {}
+  if clientMode == "auto" and meta.Interface then
+    for num in string.gmatch(meta.Interface, "%d+") do
+      local f = clientForInterface(tonumber(num))
+      if f and clientRank[f] > detectedRank then client, detectedRank = f, clientRank[f] end
+    end
+  end
   __addons[name] = { ns = {}, meta = meta, loaded = false, sv = {} }
   __addonList[#__addonList + 1] = name
   local savedVars = {}

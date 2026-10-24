@@ -157,6 +157,13 @@ function getRect(o)
         mw, mh = textMetrics(o, s, es, fw)
       end
       if l and r then w = r - l elseif s.w then w = s.w * es else w = mw or 0 end
+      if s.type == "EditBox" and s.multi and not s.h and not (b and t) then
+        -- a multi-line EditBox grows with its text; inside a ScrollFrame it also fills the viewport so it stays clickable
+        local path, size, flags = fontOf(s)
+        mh = __measureH(s.etext or "", path, size, flags, w / es) * es + 4 * es
+        local pr = s.parent and S[s.parent].type == "ScrollFrame" and getRect(s.parent)
+        if pr then mh = max(mh, pr[4]) end
+      end
       if b and t then h = t - b elseif s.h then h = s.h * es else h = mh or 0 end
       local left = l or (r and r - w) or (cx and cx - w / 2) or 0
       local bottom = b or (t and t - h) or (cy and cy - h / 2) or 0
@@ -982,7 +989,7 @@ function EditBox:SetText(t)
   t = (t == nil) and "" or tostring(t)
   if s.etext == t then return end
   s.etext = t
-  dirty()
+  if s.multi then ldirty() else dirty() end
   fire(self, "OnTextChanged", false)
 end
 function EditBox:GetText() return S[self].etext or "" end
@@ -1588,7 +1595,10 @@ function __Mouse(id, ev, btn, extra)
   elseif ev == "dragstop" then
     fire(o, "OnDragStop")
   elseif ev == "wheel" then
-    fire(o, "OnMouseWheel", extra)
+    -- bubble up to the nearest frame that handles the wheel (e.g. a ScrollFrame behind an EditBox)
+    local target = o
+    while target and not S[target].scripts.OnMouseWheel do target = S[target].parent end
+    if target then fire(target, "OnMouseWheel", extra) end
   elseif ev == "slider" then
     local v = extra
     local mn, mx = s.min or 0, s.max or 100
@@ -1604,6 +1614,7 @@ function __EditInput(id, ev, text)
   local s = S[o]
   if ev == "text" then
     s.etext = text
+    if s.multi then ldirty() end
     fire(o, "OnTextChanged", true)
     fire(o, "OnChar", string.sub(text, -1))
   elseif ev == "enter" then fire(o, "OnEnterPressed")
