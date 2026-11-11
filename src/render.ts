@@ -94,8 +94,16 @@ export class Renderer {
       if (!seen.has(id)) { el.remove(); this.els.delete(id); this.sigs.delete(id); structural = true }
     }
     if (structural) {
-      for (const it of snap.items) this.stage.appendChild(this.els.get(it.id)!)
-      this.stage.appendChild(this.overlay)
+      // Put elements in snapshot order, moving only the ones out of place: moving a node in the DOM blurs a
+      // focused <input>, which used to drop an EditBox's focus whenever any frame appeared or disappeared.
+      let prev: Element | null = null
+      for (const it of snap.items) {
+        const el = this.els.get(it.id)!
+        const want: Element | null = prev ? prev.nextElementSibling : this.stage.firstElementChild
+        if (el !== want) this.stage.insertBefore(el, want)
+        prev = el
+      }
+      if (this.stage.lastElementChild !== this.overlay) this.stage.appendChild(this.overlay)
     }
   }
 
@@ -262,7 +270,9 @@ export class Renderer {
       inp.dataset.sub = "input"
       inp.spellcheck = false
       inp.autocomplete = "off"
-      inp.addEventListener("pointerdown", (e) => e.stopPropagation())
+      // the input handles text selection itself, but the EditBox still gets OnMouseDown / OnMouseUp
+      inp.addEventListener("pointerdown", (e: Event) => { e.stopPropagation(); this.input.mouse(it.id, "down", mapBtn((e as PointerEvent).button)) })
+      inp.addEventListener("pointerup", (e: Event) => { e.stopPropagation(); this.input.mouse(it.id, "up", mapBtn((e as PointerEvent).button)) })
       inp.addEventListener("input", () => this.input.edit(it.id, "text", inp!.value))
       inp.addEventListener("focus", () => this.input.edit(it.id, "focus"))
       inp.addEventListener("blur", () => this.input.edit(it.id, "blur"))
@@ -284,6 +294,7 @@ export class Renderer {
       font: `${ed.size}px ${fontFamily(ed.font)}`, color: rgba(ed.col), textAlign: (ed.jh || "LEFT").toLowerCase(),
     })
     if (ed.focus && document.activeElement !== inp) inp.focus()
+    else if (!ed.focus && document.activeElement === inp) inp.blur() // EditBox:ClearFocus()
   }
 
   private fillSlider(el: HTMLElement, it: Item) {

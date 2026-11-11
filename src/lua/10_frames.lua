@@ -208,6 +208,7 @@ local fire
 local function propagateShow(o, show)
   local s = S[o]
   if s.kind == "frame" then
+    if not show and __focus == o then o:ClearFocus() end -- a hidden edit box loses the focus
     fire(o, show and "OnShow" or "OnHide")
     for _, c in ipairs(s.children) do
       if S[c].shown then propagateShow(c, show) end
@@ -1009,10 +1010,15 @@ function EditBox:SetFontObject(fo) S[self].fontObj = resolveRel(fo) dirty() end
 function EditBox:SetTextColor(r, g, b, a) S[self].color = { r, g, b, a or 1 } dirty() end
 function EditBox:SetTextInsets(l, r, t, b) S[self].insets = { l or 0, r or 0, t or 0, b or 0 } dirty() end
 function EditBox:SetJustifyH(j) S[self].jh = j dirty() end
-function EditBox:SetFocus() S[self].wantFocus = true __focus = self dirty() fire(self, "OnEditFocusGained") end
+function EditBox:SetFocus()
+  if __focus == self then return end
+  local old = __focus
+  if old and S[old] then old:ClearFocus() end
+  S[self].wantFocus = true __focus = self dirty() fire(self, "OnEditFocusGained")
+end
 function EditBox:ClearFocus()
-  if __focus == self then __focus = nil fire(self, "OnEditFocusLost") end
   S[self].wantFocus = false dirty()
+  if __focus == self then __focus = nil fire(self, "OnEditFocusLost") end
 end
 function EditBox:HasFocus() return __focus == self end
 function EditBox:HighlightText() end
@@ -1813,8 +1819,8 @@ function __EditInput(id, ev, text)
   elseif ev == "enter" then fire(o, "OnEnterPressed")
   elseif ev == "escape" then fire(o, "OnEscapePressed")
   elseif ev == "tab" then fire(o, "OnTabPressed")
-  elseif ev == "focus" then __focus = o fire(o, "OnEditFocusGained")
-  elseif ev == "blur" then if __focus == o then __focus = nil end fire(o, "OnEditFocusLost")
+  elseif ev == "focus" then o:SetFocus() -- clicking the input focuses the EditBox (and unfocuses the previous one)
+  elseif ev == "blur" then if __focus == o then o:ClearFocus() end
   end
 end
 
