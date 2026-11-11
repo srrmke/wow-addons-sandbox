@@ -364,8 +364,11 @@ function __BeginAddon(name, metaJson, svJson)
   end
   __addons[name] = { ns = {}, meta = meta, loaded = false, sv = {} }
   __addonList[#__addonList + 1] = name
+  -- account-wide and per-character variables are stored the same way: the sandbox has a single character
   local savedVars = {}
-  for v in string.gmatch((meta.SavedVariables or ""), "[^,%s]+") do savedVars[#savedVars + 1] = v end
+  for _, field in ipairs({ "SavedVariables", "SavedVariablesPerCharacter" }) do
+    for v in string.gmatch((meta[field] or ""), "[^,%s]+") do savedVars[#savedVars + 1] = v end
+  end
   __addons[name].svNames = savedVars
   local saved = svJson and __unjson(svJson, true) or {}
   for _, v in ipairs(savedVars) do _G[v] = saved[v] end
@@ -505,6 +508,18 @@ end
 function StaticPopup_Hide(which) if popup and (which == nil or popup.which == which) then popup:Hide() end end
 function StaticPopup_Visible(which) if popup and popup:IsShown() and popup.which == which then return "StaticPopup1", popup end end
 OKAY, CANCEL, ACCEPT, YES, NO, CLOSE = "Okay", "Cancel", "Accept", "Yes", "No", "Close"
+
+-- Sound kit IDs for PlaySound (which is silent in the sandbox).
+SOUNDKIT = {
+  IG_MAINMENU_OPEN = 850, IG_MAINMENU_CLOSE = 851, IG_MAINMENU_OPTION = 852, IG_MAINMENU_OPTION_CHECKBOX_ON = 856,
+  IG_MAINMENU_OPTION_CHECKBOX_OFF = 857, IG_MAINMENU_QUIT = 853, IG_MAINMENU_LOGOUT = 854, IG_CHARACTER_INFO_OPEN = 839,
+  IG_CHARACTER_INFO_CLOSE = 840, IG_CHARACTER_INFO_TAB = 841, IG_SPELLBOOK_OPEN = 829, IG_SPELLBOOK_CLOSE = 830,
+  IG_ABILITY_PAGE_TURN = 834, IG_QUEST_LOG_OPEN = 844, IG_QUEST_LOG_CLOSE = 845, IG_BACKPACK_OPEN = 862,
+  IG_BACKPACK_CLOSE = 863, IG_BACKPACK_COIN_SELECT = 864, IG_BACKPACK_COIN_OK = 865, IG_PLAYER_INVITE = 880,
+  U_CHAT_SCROLL_BUTTON = 1115, GS_TITLE_OPTION_OK = 798, GS_TITLE_OPTION_EXIT = 799, LOOT_WINDOW_COIN_SOUND = 120,
+  TELL_MESSAGE = 3081, RAID_WARNING = 8959, READY_CHECK = 8960, ALARM_CLOCK_WARNING_3 = 12889, UI_BNET_TOAST = 18019,
+  IG_MINIMAP_OPEN = 891, IG_MINIMAP_CLOSE = 892,
+}
 
 ---------------------------------------------------------------------------
 -- Macros (account slots 1..120, character slots 121..138), kept in memory
