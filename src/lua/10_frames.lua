@@ -756,6 +756,8 @@ function Frame:SetID(id) S[self].frameId = id end
 function Frame:GetID() return S[self].frameId or 0 end
 function Frame:RegisterForDrag(...) S[self].drag = { ... } end
 function Frame:SetPropagateKeyboardInput(b) S[self].propagateKeys = b end
+function Frame:GetPropagateKeyboardInput() return S[self].propagateKeys or false end
+function Frame:IsKeyboardEnabled() return S[self].keyboard or false end
 function Frame:GetChildren() return unpack(S[self].children) end
 function Frame:GetRegions() return unpack(S[self].regions) end
 function Frame:GetNumChildren() return #S[self].children end
@@ -1816,19 +1818,41 @@ function __EditInput(id, ev, text)
   end
 end
 
+local function frameZ(o)
+  local x, strata = o, nil
+  while x and not strata do strata = S[x].strata x = S[x].parent end
+  return (strataOrder[strata or "MEDIUM"] or 2) * 100000 + min(max(S[o].level or 1, 0), 99999)
+end
+
+-- Keyboard input, in the game's order: the focused edit box takes every key; otherwise keyboard-enabled frames
+-- get it top-most first, and one that doesn't propagate (SetPropagateKeyboardInput(false), the default) stops it;
+-- a key nobody kept runs its key binding (see 46_bindings.lua).
+local editKeys = { ENTER = "OnEnterPressed", NUMPADENTER = "OnEnterPressed", ESCAPE = "OnEscapePressed", TAB = "OnTabPressed", SPACE = "OnSpacePressed" }
+local arrows = { UP = true, DOWN = true, LEFT = true, RIGHT = true }
 function __Key(key, down)
-  if down and key == "ESCAPE" and not __focus then
-    for _, name in ipairs(UISpecialFrames) do
-      local f = _G[name]
-      if f and f.IsShown and f:IsShown() then f:Hide() end
+  local eb = __focus
+  if eb and S[eb] and isVisible(eb) then
+    if down then
+      if editKeys[key] then fire(eb, editKeys[key])
+      elseif arrows[key] then fire(eb, "OnArrowPressed", key) end
     end
+    return
   end
+  local list = {}
   for _, o in ipairs(allObjs) do
     local s = S[o]
-    if s.keyboard and s.shown and isVisible(o) then
+    if s.kind == "frame" and s.keyboard and isVisible(o) then list[#list + 1] = o end
+  end
+  local z = {}
+  for _, o in ipairs(list) do z[o] = frameZ(o) end
+  table.sort(list, function(a, b) if z[a] ~= z[b] then return z[a] > z[b] end return S[a].id > S[b].id end)
+  for _, o in ipairs(list) do
+    if S[o] and S[o].keyboard and isVisible(o) then
       fire(o, down and "OnKeyDown" or "OnKeyUp", key)
+      if not S[o].propagateKeys then return end
     end
   end
+  if __RunKeyBinding then __RunKeyBinding(key, down) end
 end
 
 function __Tick(dt)

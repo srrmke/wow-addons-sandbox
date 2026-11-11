@@ -147,6 +147,17 @@ stage.addEventListener("pointermove", (e) => {
   const r = stage.getBoundingClientRect()
   runtime.mouseMove((e.clientX - r.left) / zoomK, screen.h - (e.clientY - r.top) / zoomK)
 })
+// A Shift-click must count even if the page didn't see the Shift key go down (e.g. it wasn't focused), so pointer
+// events also carry the modifiers; the capture listener runs before the frame's own handler.
+let lastMods = ""
+function syncMods(e: MouseEvent) {
+  const key = `${e.shiftKey}${e.ctrlKey}${e.altKey}`
+  if (key === lastMods || !runtime.ready) return
+  lastMods = key
+  runtime.setMock({ mods: { shift: e.shiftKey, ctrl: e.ctrlKey, alt: e.altKey } })
+}
+stage.addEventListener("pointerdown", syncMods, { capture: true })
+stage.addEventListener("pointermove", syncMods)
 
 // ------------------------------------------------------------ source I/O
 async function collect(src: Source): Promise<{ addons: Addon[]; files: RawFile[] }> {
@@ -335,17 +346,46 @@ cmd.addEventListener("keydown", (e) => {
 })
 
 // -------------------------------------------------------------- keyboard
-const keyName = (e: KeyboardEvent) => (e.key.length === 1 ? e.key.toUpperCase() : e.key === "Escape" ? "ESCAPE" : e.key.toUpperCase())
+// The game's key names: LSHIFT/RSHIFT, LCTRL, LALT, SPACE, ENTER, UP, NUMPAD1, F1…, letters as typed (AZERTY-friendly).
+const CODE_KEYS: Record<string, string> = {
+  ShiftLeft: "LSHIFT", ShiftRight: "RSHIFT", ControlLeft: "LCTRL", ControlRight: "RCTRL", AltLeft: "LALT", AltRight: "RALT",
+  MetaLeft: "LMETA", MetaRight: "RMETA", Space: "SPACE", Enter: "ENTER", NumpadEnter: "NUMPADENTER", Escape: "ESCAPE", Tab: "TAB",
+  Backspace: "BACKSPACE", Delete: "DELETE", Insert: "INSERT", Home: "HOME", End: "END", PageUp: "PAGEUP", PageDown: "PAGEDOWN",
+  ArrowUp: "UP", ArrowDown: "DOWN", ArrowLeft: "LEFT", ArrowRight: "RIGHT", CapsLock: "CAPSLOCK", NumLock: "NUMLOCK",
+  ScrollLock: "SCROLLLOCK", PrintScreen: "PRINTSCREEN", Pause: "PAUSE", NumpadAdd: "NUMPADPLUS", NumpadSubtract: "NUMPADMINUS",
+  NumpadMultiply: "NUMPADMULTIPLY", NumpadDivide: "NUMPADDIVIDE", NumpadDecimal: "NUMPADDECIMAL", Minus: "-", Equal: "=",
+  BracketLeft: "[", BracketRight: "]", Backslash: "\\", Semicolon: ";", Quote: "'", Comma: ",", Period: ".", Slash: "/", Backquote: "`",
+}
+const KEY_FALLBACK: Record<string, string> = { Shift: "LSHIFT", Control: "LCTRL", Alt: "LALT", Meta: "LMETA", " ": "SPACE", Enter: "ENTER", Escape: "ESCAPE" }
+function keyName(e: KeyboardEvent): string {
+  if (/^[a-z]$/i.test(e.key)) return e.key.toUpperCase()
+  const code = CODE_KEYS[e.code]
+  if (code) return code
+  let m = e.code.match(/^Digit(\d)$/)
+  if (m) return m[1]
+  m = e.code.match(/^Numpad(\d)$/)
+  if (m) return "NUMPAD" + m[1]
+  if (/^F\d{1,2}$/.test(e.code)) return e.code
+  return KEY_FALLBACK[e.key] ?? (e.key.startsWith("Arrow") ? e.key.slice(5).toUpperCase() : e.key.toUpperCase())
+}
+const STAGE_KEYS = new Set(["Tab", " ", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Escape"])
+const isTyping = (t: HTMLElement) => t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable
 window.addEventListener("keydown", (e) => {
   const t = e.target as HTMLElement
-  if (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT") return
+  if (isTyping(t)) return
+  // keys the game uses shouldn't scroll the page or move browser focus while the stage has it
+  if (STAGE_KEYS.has(e.key) && (t === document.body || stage.contains(t))) e.preventDefault()
   runtime.setMock({ mods: { shift: e.shiftKey, ctrl: e.ctrlKey, alt: e.altKey } })
+  if (e.repeat && /SHIFT|CTRL|ALT|META/.test(keyName(e))) return
   runtime.key(keyName(e), true)
 })
 window.addEventListener("keyup", (e) => {
   runtime.setMock({ mods: { shift: e.shiftKey, ctrl: e.ctrlKey, alt: e.altKey } })
+  if (isTyping(e.target as HTMLElement)) return
   runtime.key(keyName(e), false)
 })
+// switching windows while holding a modifier would leave it stuck down
+window.addEventListener("blur", () => { if (runtime.ready) runtime.setMock({ mods: { shift: false, ctrl: false, alt: false } }) })
 
 // ------------------------------------------------------------------ tabs
 $("tabs").addEventListener("click", (e) => {

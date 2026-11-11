@@ -8,12 +8,13 @@ import items from "./lua/40_items.lua?raw"
 import bags from "./lua/41_bags.lua?raw"
 import loot from "./lua/42_loot.lua?raw"
 import settings from "./lua/45_settings.lua?raw"
+import bindings from "./lua/46_bindings.lua?raw"
 import type { Addon } from "./addons"
 import { normKey } from "./addons"
 import { measureHeight, measureWidth } from "./fonts"
 import type { Snapshot } from "./render"
 
-const PRELUDE = [core, frames, xml, api, items, bags, loot, settings].join("\n")
+const PRELUDE = [core, frames, xml, api, items, bags, loot, settings, bindings].join("\n")
 
 export type LogKind = "chat" | "error" | "warn" | "info" | "ui"
 
