@@ -157,3 +157,10 @@ body.drag .stage-area { outline: 2px dashed var(--gold); outline-offset: -8px; }
 .itemrow { display: flex; align-items: center; gap: 6px; justify-content: space-between; }
 .itemrow .item { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .itemrow button.mini { padding: 1px 6px; }
+.corpses { display: grid; gap: 6px; }
+.corpse { border-top: 1px solid var(--line); padding-top: 6px; display: grid; gap: 3px; }
+.corpse .loot { display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: 12px; }
+.corpse b { color: var(--text); font-weight: 600; }
+.grp details summary { cursor: pointer; color: var(--muted); }
+.grp .spawn { display: grid; gap: 6px; margin-top: 6px; }
+.grp .spawn .row input:not(.count) { flex: 1; min-width: 0; }

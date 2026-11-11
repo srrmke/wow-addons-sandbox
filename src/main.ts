@@ -74,6 +74,7 @@ const runtime = new Runtime({
   gameEvent: (text) => {
     logEvent(text, true)
     if (/^(BAG_UPDATE_DELAYED|PLAYER_MONEY)\(/.test(text)) refreshBagView()
+    if (/^(LOOT_CLOSED|LOOT_OPENED|LOOT_SLOT_CLEARED|CVAR_UPDATE)\(/.test(text)) refreshLootView()
   },
   persist: (key, json) => { try { localStorage.setItem(`wowsb:state:${key}`, json) } catch { /* storage unavailable */ } },
   restore: (key) => { try { return localStorage.getItem(`wowsb:state:${key}`) ?? undefined } catch { return undefined } },
@@ -486,7 +487,77 @@ function buildGameForm() {
     runtime.fire(on ? "PLAYER_REGEN_DISABLED" : "PLAYER_REGEN_ENABLED")
   })
   writeJson("wowsb:mock", undefined)
+  buildLootGroup(grp("Loot"))
   buildBagGroup(grp("Bags"))
+}
+
+// ------------------------------------------------------------ world: loot
+interface LootRow { id?: number; count?: number; name?: string; quality?: number; money?: number }
+interface LootState { corpses: { index: number; guid: string; name: string; level: number; ctype: string; loot: LootRow[]; opened: boolean }[]; open: boolean; autoLoot: boolean }
+const fmtMoney = (c: number) => [c >= 10000 && `${Math.floor(c / 10000)}g`, c >= 100 && `${Math.floor(c / 100) % 100}s`, `${c % 100}c`].filter(Boolean).join(" ")
+let refreshLootView = () => {}
+function buildLootGroup(g: HTMLElement) {
+  const auto = h("input", { type: "checkbox", onchange: () => runtime.invoke("SetCVar", "autoLootDefault", auto.checked ? "1" : "0") })
+  const list = h("div", { className: "corpses" })
+  // spawn form
+  const name = h("input", { value: "Kobold Vermin", placeholder: "Name" })
+  const level = h("input", { type: "number", min: "1", max: "63", value: "3", className: "count" })
+  const ctype = h("select", null, ...["Beast", "Humanoid", "Undead", "Elemental", "Demon", "Dragonkin", "Critter"].map((t) => h("option", null, t)))
+  const pick = itemSelect("g-loot-item")
+  const pickCount = h("input", { type: "number", min: "1", value: "1", className: "count" })
+  const copper = h("input", { type: "number", min: "0", value: "0", className: "count", title: "Money in copper" })
+  let pending: LootRow[] = []
+  const pendingView = h("div", { className: "itemlist" })
+  const showPending = () => {
+    pendingView.replaceChildren(...pending.map((p, i) => h("div", { className: "itemrow" }, itemLabel(p.name!, p.quality!, p.count),
+      h("button", { className: "mini", onclick: () => { pending.splice(i, 1); showPending() } }, "✕"))))
+  }
+  const addPending = () => {
+    const o = pick.selectedOptions[0]
+    if (!o) return
+    pending.push({ id: Number(pick.value), count: Math.max(1, Number(pickCount.value) || 1), name: o.textContent!.replace(/ \(\d+\)$/, ""), quality: Number(o.dataset.quality) || 0 })
+    showPending()
+  }
+  const spawn = () => {
+    const loot: LootRow[] = pending.map((p) => ({ id: p.id, count: p.count }))
+    if (Number(copper.value) > 0) loot.push({ money: Number(copper.value) })
+    if (!loot.length) { addLog("warn", "Add at least one item or some money to the corpse's loot."); return }
+    runtime.invoke("__LootSpawn", JSON.stringify({ name: name.value || "Corpse", level: Number(level.value) || 1, ctype: ctype.value, loot }))
+    pending = []
+    showPending()
+    refreshLootView()
+  }
+  const act = (fn: () => void) => () => { fn(); refreshLootView() }
+  g.append(
+    h("label", { className: "plain" }, "Auto loot", h("span", null, auto, " ", h("code", null, "autoLootDefault"), " CVar")),
+    list,
+    h("div", { className: "row" },
+      h("button", { className: "mini", onclick: act(() => runtime.invoke("__LootSpawnSamples")) }, "Spawn sample corpses"),
+      h("button", { className: "mini", title: "Area loot: every corpse into one loot window", onclick: act(() => runtime.invoke("__LootOpen", "all", false)) }, "Loot all"),
+      h("button", { className: "mini danger", onclick: act(() => runtime.invoke("__LootClear")) }, "Clear")),
+    h("details", null, h("summary", null, "New corpse…"), h("div", { className: "spawn" },
+      h("div", { className: "row" }, name, level, ctype),
+      h("div", { className: "row" }, pick, pickCount, h("button", { className: "mini", onclick: addPending }, "Add item")),
+      pendingView,
+      h("div", { className: "row" }, h("span", { className: "muted" }, "Money (copper)"), copper, h("button", { className: "mini primary", onclick: spawn }, "Spawn")))),
+    h("p", { className: "muted" }, "Corpses appear at the bottom of the screen: hover for the unit tooltip, click to loot, Shift-click to invert auto loot."),
+  )
+  refreshLootView = () => {
+    const st = runtime.query<LootState>("__LootState")
+    if (!st) return
+    auto.checked = st.autoLoot
+    list.replaceChildren(...st.corpses.map((c) => h("div", { className: "corpse" },
+      h("div", { className: "itemrow" },
+        h("b", null, `${c.name} `, h("span", { className: "muted" }, `${c.level} ${c.ctype}${c.opened ? " · opened" : ""}`)),
+        h("span", null,
+          h("button", { className: "mini", disabled: !c.loot.length, onclick: act(() => runtime.invoke("__LootOpen", c.index, false)) }, "Loot"),
+          h("button", { className: "mini", disabled: !c.loot.length, title: "Shift: inverts auto loot", onclick: act(() => runtime.invoke("__LootOpen", c.index, true)) }, "⇧ Loot"),
+          h("button", { className: "mini", title: "Remove", onclick: act(() => runtime.invoke("__LootRemove", c.index)) }, "✕"))),
+      h("div", { className: "loot" }, ...(c.loot.length ? c.loot.map((l) => l.money ? h("span", { className: "item" }, fmtMoney(l.money)) : itemLabel(l.name!, l.quality!, l.count))
+        : [h("span", { className: "muted" }, "no loot left")])))))
+    if (!st.corpses.length) list.append(h("span", { className: "muted" }, "No corpses. Spawn some below."))
+  }
+  refreshLootView()
 }
 
 // ------------------------------------------------------------ world: bags
@@ -504,6 +575,7 @@ function itemSelect(id: string): HTMLSelectElement {
   return h("select", { id }, ...items.map((it) => {
     const o = h("option", { value: String(it.id) }, `${it.name} (${it.id})`)
     o.style.color = QUALITY_HEX[it.quality] ?? ""
+    o.dataset.quality = String(it.quality)
     return o
   }))
 }

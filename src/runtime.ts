@@ -6,12 +6,13 @@ import xml from "./lua/20_xml.lua?raw"
 import api from "./lua/30_api.lua?raw"
 import items from "./lua/40_items.lua?raw"
 import bags from "./lua/41_bags.lua?raw"
+import loot from "./lua/42_loot.lua?raw"
 import type { Addon } from "./addons"
 import { normKey } from "./addons"
 import { measureHeight, measureWidth } from "./fonts"
 import type { Snapshot } from "./render"
 
-const PRELUDE = [core, frames, xml, api, items, bags].join("\n")
+const PRELUDE = [core, frames, xml, api, items, bags, loot].join("\n")
 
 export type LogKind = "chat" | "error" | "warn" | "info" | "ui"
 

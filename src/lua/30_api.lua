@@ -17,7 +17,9 @@ __mock = {
 function __SetMock(json)
   local patch = __unjson(json)
   for unit, vals in pairs(patch.units or {}) do
-    if vals == false then __mock.units[unit] = nil
+    if unit == "mouseover" then vals = nil end -- set by hovering a unit on the stage, never restored
+    if vals == nil then -- skip
+    elseif vals == false then __mock.units[unit] = nil
     else
       __mock.units[unit] = __mock.units[unit] or {}
       for k, v in pairs(vals) do __mock.units[unit][k] = v end
@@ -29,7 +31,7 @@ end
 function __GetMock() return __json(__mock) end
 
 local function U(unit)
-  if unit == "mouseover" then return nil end
+  if unit == "mouseover" then return __mock.units.mouseover end -- a corpse or unit hovered on the stage
   if unit == "targettarget" then unit = "player" end
   return __mock.units[unit]
 end
@@ -70,7 +72,7 @@ function UnitIsGroupLeader() return false end
 function UnitInParty() return false end
 function UnitInRaid() return nil end
 function UnitPlayerControlled(u) return UnitIsPlayer(u) end
-function UnitCreatureType() return "Humanoid" end
+function UnitCreatureType(u) local x = U(u) return x and (x.creatureType or "Humanoid") end
 function UnitClassification() return "normal" end
 function UnitThreatSituation() return nil end
 function UnitGetTotalAbsorbs() return 0 end
@@ -489,6 +491,7 @@ function StaticPopup_Show(which, a1, a2, data)
     popup.button2:SetPoint("BOTTOMLEFT", popup, "BOTTOM", 4, 18)
   end
   popup.data = data
+  popup.which = which
   popup.text:SetText(string.format(d.text or "", a1, a2))
   popup.button1:SetText(d.button1 or "Okay")
   popup.button2:SetText(d.button2 or "Cancel")
@@ -498,7 +501,9 @@ function StaticPopup_Show(which, a1, a2, data)
   popup:Show()
   return popup
 end
-function StaticPopup_Hide() if popup then popup:Hide() end end
+-- hides the popup only if it is showing that dialog (or any dialog when which is nil)
+function StaticPopup_Hide(which) if popup and (which == nil or popup.which == which) then popup:Hide() end end
+function StaticPopup_Visible(which) if popup and popup:IsShown() and popup.which == which then return "StaticPopup1", popup end end
 OKAY, CANCEL, ACCEPT, YES, NO, CLOSE = "Okay", "Cancel", "Accept", "Yes", "No", "Close"
 
 ---------------------------------------------------------------------------
