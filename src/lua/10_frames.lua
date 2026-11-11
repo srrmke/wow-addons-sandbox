@@ -1773,9 +1773,18 @@ function __Mouse(id, ev, btn, extra)
       end
     end
   elseif ev == "dragstart" then
+    -- a frame that starts a drag doesn't also get clicked when the button is released
+    if s.drag and #s.drag > 0 then s.down = false end
+    s.dragHadItem = CursorHasItem and CursorHasItem() or false
     fire(o, "OnDragStart", btn)
   elseif ev == "dragstop" then
     fire(o, "OnDragStop")
+    -- dropping what the drag put on the cursor onto another frame
+    local target = __hoverObj
+    -- (only when this drag picked the item up, not when moving a window while already holding one)
+    local picked = not s.dragHadItem and CursorHasItem and CursorHasItem()
+    s.dragHadItem = nil
+    if target and target ~= o and picked and S[target] then fire(target, "OnReceiveDrag") end
   elseif ev == "wheel" then
     -- bubble up to the nearest frame that handles the wheel (e.g. a ScrollFrame behind an EditBox)
     local target = o

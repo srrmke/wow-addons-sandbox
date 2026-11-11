@@ -71,7 +71,10 @@ function setStatus(text: string, kind: "" | "ok" | "bad" = "") {
 const runtime = new Runtime({
   log: addLog,
   requestReload: () => setTimeout(() => void reload("ReloadUI"), 0),
-  gameEvent: (text) => logEvent(text, true),
+  gameEvent: (text) => {
+    logEvent(text, true)
+    if (/^(BAG_UPDATE_DELAYED|PLAYER_MONEY)\(/.test(text)) refreshBagView()
+  },
   persist: (key, json) => { try { localStorage.setItem(`wowsb:state:${key}`, json) } catch { /* storage unavailable */ } },
   restore: (key) => { try { return localStorage.getItem(`wowsb:state:${key}`) ?? undefined } catch { return undefined } },
 })
@@ -483,6 +486,60 @@ function buildGameForm() {
     runtime.fire(on ? "PLAYER_REGEN_DISABLED" : "PLAYER_REGEN_ENABLED")
   })
   writeJson("wowsb:mock", undefined)
+  buildBagGroup(grp("Bags"))
+}
+
+// ------------------------------------------------------------ world: bags
+interface ItemRow { id: number; name: string; quality: number }
+const QUALITY_HEX = ["#9d9d9d", "#ffffff", "#1eff00", "#0070dd", "#a335ee", "#ff8000", "#e6cc80", "#00ccff", "#00ccff"]
+
+/** Tiny DOM helper: h("button", { className: "mini", onclick }, "text", child…) */
+function h<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLElementTagNameMap[K]> | null = null, ...kids: (Node | string)[]): HTMLElementTagNameMap[K] {
+  const el = Object.assign(document.createElement(tag), props ?? {})
+  el.append(...kids)
+  return el
+}
+function itemSelect(id: string): HTMLSelectElement {
+  const items = runtime.query<ItemRow[]>("__ItemList") ?? []
+  return h("select", { id }, ...items.map((it) => {
+    const o = h("option", { value: String(it.id) }, `${it.name} (${it.id})`)
+    o.style.color = QUALITY_HEX[it.quality] ?? ""
+    return o
+  }))
+}
+function itemLabel(name: string, quality: number, count?: number): HTMLElement {
+  const s = h("span", null, `[${name}]`)
+  s.style.color = QUALITY_HEX[quality] ?? ""
+  return h("span", { className: "item" }, s, count && count > 1 ? ` ×${count}` : "")
+}
+
+interface BagState { slots: { slot: number; id: number; count: number; name: string; quality: number }[]; free: number; money: number }
+let refreshBagView = () => {}
+function buildBagGroup(g: HTMLElement) {
+  const list = h("div", { className: "itemlist" })
+  const money = h("span", { className: "val" })
+  const sel = itemSelect("g-give-item")
+  const count = h("input", { type: "number", min: "1", value: "1", className: "count" })
+  g.append(
+    h("div", { className: "row" }, h("button", { className: "mini", onclick: () => runtime.invoke("ToggleBackpack") }, "Open / close backpack (B)"), money),
+    list,
+    h("div", { className: "row" }, sel, count, h("button", { className: "mini", onclick: () => {
+      const n = Math.max(1, Number(count.value) || 1)
+      const added = runtime.invoke("__BagAdd", Number(sel.value), n) as number
+      if (added < n) addLog("ui", "Inventory is full.")
+    } }, "Give")),
+    h("p", { className: "muted" }, "Left-click a bag item on the stage to pick it up (", h("code", null, "GetCursorInfo"), "), click a slot to put it down, right-click or Esc to drop it back."),
+  )
+  refreshBagView = () => {
+    const st = runtime.query<BagState>("__BagState")
+    if (!st) return
+    money.textContent = `${Math.floor(st.money / 10000)}g ${Math.floor(st.money / 100) % 100}s ${st.money % 100}c`
+    list.replaceChildren(...st.slots.map((s) => h("div", { className: "itemrow" }, itemLabel(s.name, s.quality, s.count),
+      h("button", { className: "mini", title: "Destroy", onclick: () => runtime.invoke("__BagClear", s.slot) }, "✕"))))
+    if (!st.slots.length) list.append(h("span", { className: "muted" }, "Empty"))
+    list.append(h("span", { className: "muted" }, `${st.free} free slot(s)`))
+  }
+  refreshBagView()
 }
 
 // -------------------------------------------------------------- inspector

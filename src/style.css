@@ -149,3 +149,11 @@ body.drag .stage-area { outline: 2px dashed var(--gold); outline-offset: -8px; }
   main { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) 320px; }
   .side { border-left: 0; border-top: 1px solid var(--line); }
 }
+
+.grp .row { align-items: center; flex-wrap: wrap; }
+.grp .row select { min-width: 0; flex: 1; }
+.grp input.count { width: 56px; flex: none; }
+.itemlist { display: grid; gap: 2px; max-height: 180px; overflow: auto; font-size: 12px; }
+.itemrow { display: flex; align-items: center; gap: 6px; justify-content: space-between; }
+.itemrow .item { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.itemrow button.mini { padding: 1px 6px; }

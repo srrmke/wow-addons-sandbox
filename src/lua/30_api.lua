@@ -88,9 +88,44 @@ function IsShiftKeyDown() return __mock.mods.shift end
 function IsControlKeyDown() return __mock.mods.ctrl end
 function IsAltKeyDown() return __mock.mods.alt end
 function IsModifierKeyDown() return __mock.mods.shift or __mock.mods.ctrl or __mock.mods.alt end
-function IsModifiedClick() return false end
 function IsLeftShiftKeyDown() return __mock.mods.shift end
 function IsRightShiftKeyDown() return false end
+function IsLeftControlKeyDown() return __mock.mods.ctrl end
+function IsRightControlKeyDown() return false end
+function IsLeftAltKeyDown() return __mock.mods.alt end
+function IsRightAltKeyDown() return false end
+
+-- Modified clicks: the game's defaults (Interface > Controls), e.g. Shift-click links an item.
+local modifiedClicks = {
+  CHATLINK = "SHIFT", DRESSUP = "CTRL", SPLITSTACK = "SHIFT", PICKUPACTION = "SHIFT", COMPAREITEMS = "SHIFT",
+  OPENALLBAGS = "SHIFT", AUTOLOOTTOGGLE = "SHIFT", STICKYCAMERA = "CTRL", FOCUSCAST = "NONE", SELFCAST = "ALT",
+  QUESTWATCHTOGGLE = "SHIFT", TOKENWATCHTOGGLE = "SHIFT", SOCKETITEM = "SHIFT", EXPANDITEM = "ALT",
+}
+function GetModifiedClick(action) return modifiedClicks[action] or "NONE" end
+function SetModifiedClick(action, mod) modifiedClicks[action] = mod end
+function IsModifiedClick(action)
+  local m = action and modifiedClicks[action] or "SHIFT"
+  if m == "NONE" then return not IsModifierKeyDown() end
+  local want = { SHIFT = false, CTRL = false, ALT = false }
+  for part in string.gmatch(m, "[^-]+") do want[part] = true end
+  return want.SHIFT == IsShiftKeyDown() and want.CTRL == IsControlKeyDown() and want.ALT == IsAltKeyDown()
+end
+
+-- Shift-click on an item: put the link in the focused edit box (a search box, or the chat edit box in the game).
+function ChatEdit_InsertLink(link)
+  if not link then return false end
+  local eb = __focus
+  if eb and eb.Insert then eb:Insert(link) return true end
+  __log("chat", "Linked: " .. link)
+  return true
+end
+function ChatEdit_GetActiveWindow() return __focus end
+function HandleModifiedItemClick(link)
+  if not link then return false end
+  if IsModifiedClick("CHATLINK") then return ChatEdit_InsertLink(link) end
+  if IsModifiedClick("DRESSUP") then return true end
+  return false
+end
 function IsMouseButtonDown() return false end
 function GetMouseButtonClicked() return "LeftButton" end
 
@@ -196,7 +231,7 @@ function GetRealZoneText() return "Sandbox Isle" end
 function GetZoneText() return "Sandbox Isle" end
 function GetSubZoneText() return "" end
 function GetMinimapZoneText() return "Sandbox Isle" end
-function GetMoney() return 1234567 end
+-- GetMoney() lives with the bags (41_bags.lua)
 function GetFramerate() return 60 end
 function GetNetStats() return 0, 0, 30, 30 end
 function GetNumGuildMembers() return 0 end

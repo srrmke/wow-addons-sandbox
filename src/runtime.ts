@@ -5,12 +5,13 @@ import frames from "./lua/10_frames.lua?raw"
 import xml from "./lua/20_xml.lua?raw"
 import api from "./lua/30_api.lua?raw"
 import items from "./lua/40_items.lua?raw"
+import bags from "./lua/41_bags.lua?raw"
 import type { Addon } from "./addons"
 import { normKey } from "./addons"
 import { measureHeight, measureWidth } from "./fonts"
 import type { Snapshot } from "./render"
 
-const PRELUDE = [core, frames, xml, api, items].join("\n")
+const PRELUDE = [core, frames, xml, api, items, bags].join("\n")
 
 export type LogKind = "chat" | "error" | "warn" | "info" | "ui"
 
@@ -111,6 +112,22 @@ export class Runtime {
       this.host.log("error", `[sandbox] ${name}: ${(e as Error).message}`)
       return undefined
     }
+  }
+
+  /** Call any global Lua function of the sandbox (loot, bags… helpers). Errors go to the console. */
+  invoke(name: string, ...args: unknown[]): unknown {
+    if (!this.ready || !this.lua) return undefined
+    const f = this.lua.global.get(name) as LuaFn | undefined
+    if (typeof f !== "function") return undefined
+    try { return f(...args) } catch (e) {
+      this.host.log("error", `[sandbox] ${name}: ${(e as Error).message}`)
+      return undefined
+    }
+  }
+  /** invoke() for helpers that return JSON. */
+  query<T>(name: string, ...args: unknown[]): T | null {
+    const j = this.invoke(name, ...args)
+    return typeof j === "string" ? (JSON.parse(j) as T) : null
   }
 
   tick(dt: number) { if (this.ready) this.call("__Tick", dt) }
