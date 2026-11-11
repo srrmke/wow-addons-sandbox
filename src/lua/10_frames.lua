@@ -1058,6 +1058,7 @@ end
 function Slider:GetValue() return S[self].val or S[self].min or 0 end
 function Slider:Enable() S[self].disabled = false dirty() end
 function Slider:Disable() S[self].disabled = true dirty() end
+function Slider:SetEnabled(b) if b then self:Enable() else self:Disable() end end
 function Slider:IsEnabled() return not S[self].disabled end
 
 ---------------------------------------------------------------------------
