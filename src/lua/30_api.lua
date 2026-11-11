@@ -17,7 +17,9 @@ __mock = {
 function __SetMock(json)
   local patch = __unjson(json)
   for unit, vals in pairs(patch.units or {}) do
-    if vals == false then __mock.units[unit] = nil
+    if unit == "mouseover" then vals = nil end -- set by hovering a unit on the stage, never restored
+    if vals == nil then -- skip
+    elseif vals == false then __mock.units[unit] = nil
     else
       __mock.units[unit] = __mock.units[unit] or {}
       for k, v in pairs(vals) do __mock.units[unit][k] = v end
@@ -29,7 +31,7 @@ end
 function __GetMock() return __json(__mock) end
 
 local function U(unit)
-  if unit == "mouseover" then return nil end
+  if unit == "mouseover" then return __mock.units.mouseover end -- a corpse or unit hovered on the stage
   if unit == "targettarget" then unit = "player" end
   return __mock.units[unit]
 end
@@ -70,7 +72,7 @@ function UnitIsGroupLeader() return false end
 function UnitInParty() return false end
 function UnitInRaid() return nil end
 function UnitPlayerControlled(u) return UnitIsPlayer(u) end
-function UnitCreatureType() return "Humanoid" end
+function UnitCreatureType(u) local x = U(u) return x and (x.creatureType or "Humanoid") end
 function UnitClassification() return "normal" end
 function UnitThreatSituation() return nil end
 function UnitGetTotalAbsorbs() return 0 end
@@ -88,9 +90,44 @@ function IsShiftKeyDown() return __mock.mods.shift end
 function IsControlKeyDown() return __mock.mods.ctrl end
 function IsAltKeyDown() return __mock.mods.alt end
 function IsModifierKeyDown() return __mock.mods.shift or __mock.mods.ctrl or __mock.mods.alt end
-function IsModifiedClick() return false end
 function IsLeftShiftKeyDown() return __mock.mods.shift end
 function IsRightShiftKeyDown() return false end
+function IsLeftControlKeyDown() return __mock.mods.ctrl end
+function IsRightControlKeyDown() return false end
+function IsLeftAltKeyDown() return __mock.mods.alt end
+function IsRightAltKeyDown() return false end
+
+-- Modified clicks: the game's defaults (Interface > Controls), e.g. Shift-click links an item.
+local modifiedClicks = {
+  CHATLINK = "SHIFT", DRESSUP = "CTRL", SPLITSTACK = "SHIFT", PICKUPACTION = "SHIFT", COMPAREITEMS = "SHIFT",
+  OPENALLBAGS = "SHIFT", AUTOLOOTTOGGLE = "SHIFT", STICKYCAMERA = "CTRL", FOCUSCAST = "NONE", SELFCAST = "ALT",
+  QUESTWATCHTOGGLE = "SHIFT", TOKENWATCHTOGGLE = "SHIFT", SOCKETITEM = "SHIFT", EXPANDITEM = "ALT",
+}
+function GetModifiedClick(action) return modifiedClicks[action] or "NONE" end
+function SetModifiedClick(action, mod) modifiedClicks[action] = mod end
+function IsModifiedClick(action)
+  local m = action and modifiedClicks[action] or "SHIFT"
+  if m == "NONE" then return not IsModifierKeyDown() end
+  local want = { SHIFT = false, CTRL = false, ALT = false }
+  for part in string.gmatch(m, "[^-]+") do want[part] = true end
+  return want.SHIFT == IsShiftKeyDown() and want.CTRL == IsControlKeyDown() and want.ALT == IsAltKeyDown()
+end
+
+-- Shift-click on an item: put the link in the focused edit box (a search box, or the chat edit box in the game).
+function ChatEdit_InsertLink(link)
+  if not link then return false end
+  local eb = __focus
+  if eb and eb.Insert then eb:Insert(link) return true end
+  __log("chat", "Linked: " .. link)
+  return true
+end
+function ChatEdit_GetActiveWindow() return __focus end
+function HandleModifiedItemClick(link)
+  if not link then return false end
+  if IsModifiedClick("CHATLINK") then return ChatEdit_InsertLink(link) end
+  if IsModifiedClick("DRESSUP") then return true end
+  return false
+end
 function IsMouseButtonDown() return false end
 function GetMouseButtonClicked() return "LeftButton" end
 
@@ -107,21 +144,96 @@ function GetSpellTexture(id) local s = spells[id] return s and s[2] or 134400 en
 function GetSpellLink(id) return "|cff71d5ff|Hspell:" .. id .. "|h[" .. (GetSpellInfo(id)) .. "]|h|r" end
 function IsSpellKnown() return true end
 function GetSpellCooldown() return 0, 0, 1 end
-function GetItemInfo() return nil end
-function GetItemInfoInstant() return nil end
-function GetItemCount() return 0 end
-function GetItemIcon() return 134400 end
+-- Items (GetItemInfo, C_Item, Item mixin) live in 40_items.lua.
 C_Spell = { GetSpellInfo = function(id) local n, _, ic = GetSpellInfo(id) return { name = n, iconID = ic, spellID = id } end,
   GetSpellTexture = GetSpellTexture, GetSpellName = function(id) return (GetSpellInfo(id)) end }
-C_Item = { GetItemInfo = GetItemInfo, GetItemCount = GetItemCount, GetItemIconByID = GetItemIcon }
-C_CVar = { GetCVar = GetCVar, SetCVar = SetCVar, GetCVarBool = GetCVarBool }
+
+---------------------------------------------------------------------------
+-- CVars: stored values, defaults, CVAR_UPDATE. Changed values persist across reloads (like Config.wtf).
+---------------------------------------------------------------------------
+do
+  local defaults = {
+    autoLootDefault = "0", lootUnderMouse = "0", autoInteract = "0", interactOnLeftClick = "0",
+    Sound_EnableAllSound = "1", Sound_EnableSFX = "1", Sound_EnableMusic = "1", Sound_EnableAmbience = "1", Sound_EnableDialog = "1",
+    Sound_MasterVolume = "1.0", Sound_SFXVolume = "1.0", Sound_MusicVolume = "0.4", Sound_AmbienceVolume = "0.6", Sound_DialogVolume = "1.0",
+    uiScale = "1.0", useUiScale = "0", scriptErrors = "1", taintLog = "0", showTutorials = "0", colorblindMode = "0",
+    nameplateShowEnemies = "1", nameplateShowFriends = "0", nameplateShowAll = "1", UnitNameOwn = "0", UnitNameNPC = "0",
+    enableFloatingCombatText = "0", floatingCombatTextCombatDamage = "1", ActionButtonUseKeyDown = "1", lockActionBars = "1",
+    alwaysShowActionBars = "0", autoSelfCast = "1", autoQuestWatch = "1", showTargetOfTarget = "1", chatStyle = "im",
+    cameraDistanceMaxZoomFactor = "1.9", textLocale = "enUS", audioLocale = "enUS", portal = "US",
+  }
+  local values, warned = {}, {}
+  local function key(name) return type(name) == "string" and string.lower(name) or nil end
+  local canon = {}
+  for k, v in pairs(defaults) do canon[string.lower(k)] = k values[string.lower(k)] = v end
+  local saved = __restore and __restore("cvars")
+  local savedT = saved and __unjson(saved) or {}
+  for k, v in pairs(savedT) do values[string.lower(k)] = tostring(v) canon[string.lower(k)] = canon[string.lower(k)] or k end
+
+  local function persist()
+    if not __persist then return end
+    local out = {}
+    for k, v in pairs(values) do
+      local name = canon[k] or k
+      if defaults[name] ~= v then out[name] = v end
+    end
+    __persist("cvars", __json(out))
+  end
+
+  function GetCVar(name)
+    local k = key(name)
+    if not k then return nil end
+    local v = values[k]
+    if v == nil and not warned[k] then
+      warned[k] = true
+      __log("warn", "CVar '" .. tostring(name) .. "' isn't emulated, GetCVar returns nil. Give it a value with /run SetCVar('" .. tostring(name) .. "', 1)")
+    end
+    return v
+  end
+  function GetCVarBool(name)
+    local v = GetCVar(name)
+    if v == nil then return nil end
+    return v ~= "0" and v ~= "" and string.lower(v) ~= "false"
+  end
+  function GetCVarDefault(name) local k = key(name) return k and defaults[canon[k] or ""] end
+  function SetCVar(name, value)
+    local k = key(name)
+    if not k then return false end
+    if type(value) == "boolean" then value = value and "1" or "0" end
+    value = tostring(value == nil and "" or value)
+    canon[k] = canon[k] or name
+    if values[k] == value then return true end
+    values[k] = value
+    persist()
+    if __GameEvent then __GameEvent("CVAR_UPDATE", canon[k], value) else __FireEvent("CVAR_UPDATE", canon[k], value) end
+    return true
+  end
+  function RegisterCVar(name, default)
+    local k = key(name)
+    if not k then return end
+    canon[k] = canon[k] or name
+    if default ~= nil and defaults[canon[k]] == nil then defaults[canon[k]] = tostring(default) end
+    if values[k] == nil then values[k] = default ~= nil and tostring(default) or "" end
+  end
+  function GetCVarInfo(name)
+    local v = GetCVar(name)
+    if v == nil then return nil end
+    return v, GetCVarDefault(name), false, false, false, false, false
+  end
+
+  C_CVar = {
+    GetCVar = GetCVar, SetCVar = SetCVar, GetCVarBool = GetCVarBool, GetCVarDefault = GetCVarDefault,
+    RegisterCVar = RegisterCVar, GetCVarInfo = GetCVarInfo,
+    GetCVarNumberOrDefault = function(name) return tonumber(GetCVar(name)) or tonumber(GetCVarDefault(name)) or 0 end,
+  }
+end
 C_Map = { GetBestMapForUnit = function() return 1 end, GetMapInfo = function() return { name = "Sandbox Isle", mapID = 1 } end }
 C_ClassColor = { GetClassColor = function(c) return RAID_CLASS_COLORS[c] end }
 function GetRealZoneText() return "Sandbox Isle" end
 function GetZoneText() return "Sandbox Isle" end
 function GetSubZoneText() return "" end
 function GetMinimapZoneText() return "Sandbox Isle" end
-function GetMoney() return 1234567 end
+-- GetMoney() lives with the bags (41_bags.lua)
 function GetFramerate() return 60 end
 function GetNetStats() return 0, 0, 30, 30 end
 function GetNumGuildMembers() return 0 end
@@ -141,12 +253,34 @@ function AbbreviateNumbers(n)
   return tostring(math.floor(n))
 end
 AbbreviateLargeNumbers = AbbreviateNumbers
-function GetMoneyString(c)
-  local g, s, cc = math.floor(c / 10000), math.floor(c / 100) % 100, c % 100
-  return string.format("%dg %ds %dc", g, s, cc)
+GOLD_AMOUNT_TEXTURE = "%d|TInterface\\MoneyFrame\\UI-GoldIcon:0:0:2:0|t"
+SILVER_AMOUNT_TEXTURE = "%d|TInterface\\MoneyFrame\\UI-SilverIcon:0:0:2:0|t"
+COPPER_AMOUNT_TEXTURE = "%d|TInterface\\MoneyFrame\\UI-CopperIcon:0:0:2:0|t"
+local function coinParts(c)
+  c = math.floor(c or 0)
+  return math.floor(c / 10000), math.floor(c / 100) % 100, c % 100
 end
-GetCoinText = GetMoneyString
-GetCoinTextureString = GetMoneyString
+function GetCoinTextureString(c)
+  local g, s, cc = coinParts(c)
+  local parts = {}
+  if g > 0 then parts[#parts + 1] = string.format(GOLD_AMOUNT_TEXTURE, g) end
+  if s > 0 then parts[#parts + 1] = string.format(SILVER_AMOUNT_TEXTURE, s) end
+  if cc > 0 or #parts == 0 then parts[#parts + 1] = string.format(COPPER_AMOUNT_TEXTURE, cc) end
+  return table.concat(parts, " ")
+end
+function GetMoneyString(c, separateThousands)
+  local s = GetCoinTextureString(c)
+  if separateThousands then s = string.gsub(s, "^(%d+)", function(n) return BreakUpLargeNumbers(tonumber(n)) end) end
+  return s
+end
+function GetCoinText(c, sep)
+  local g, s, cc = coinParts(c)
+  local parts = {}
+  if g > 0 then parts[#parts + 1] = g .. " Gold" end
+  if s > 0 then parts[#parts + 1] = s .. " Silver" end
+  if cc > 0 or #parts == 0 then parts[#parts + 1] = cc .. " Copper" end
+  return table.concat(parts, sep or ", ")
+end
 function SecondsToTime(s)
   s = math.floor(s)
   if s >= 3600 then return string.format("%d hr %d min", s // 3600, (s % 3600) // 60) end
@@ -230,8 +364,11 @@ function __BeginAddon(name, metaJson, svJson)
   end
   __addons[name] = { ns = {}, meta = meta, loaded = false, sv = {} }
   __addonList[#__addonList + 1] = name
+  -- account-wide and per-character variables are stored the same way: the sandbox has a single character
   local savedVars = {}
-  for v in string.gmatch((meta.SavedVariables or ""), "[^,%s]+") do savedVars[#savedVars + 1] = v end
+  for _, field in ipairs({ "SavedVariables", "SavedVariablesPerCharacter" }) do
+    for v in string.gmatch((meta[field] or ""), "[^,%s]+") do savedVars[#savedVars + 1] = v end
+  end
   __addons[name].svNames = savedVars
   local saved = svJson and __unjson(svJson, true) or {}
   for _, v in ipairs(savedVars) do _G[v] = saved[v] end
@@ -357,6 +494,7 @@ function StaticPopup_Show(which, a1, a2, data)
     popup.button2:SetPoint("BOTTOMLEFT", popup, "BOTTOM", 4, 18)
   end
   popup.data = data
+  popup.which = which
   popup.text:SetText(string.format(d.text or "", a1, a2))
   popup.button1:SetText(d.button1 or "Okay")
   popup.button2:SetText(d.button2 or "Cancel")
@@ -366,8 +504,22 @@ function StaticPopup_Show(which, a1, a2, data)
   popup:Show()
   return popup
 end
-function StaticPopup_Hide() if popup then popup:Hide() end end
+-- hides the popup only if it is showing that dialog (or any dialog when which is nil)
+function StaticPopup_Hide(which) if popup and (which == nil or popup.which == which) then popup:Hide() end end
+function StaticPopup_Visible(which) if popup and popup:IsShown() and popup.which == which then return "StaticPopup1", popup end end
 OKAY, CANCEL, ACCEPT, YES, NO, CLOSE = "Okay", "Cancel", "Accept", "Yes", "No", "Close"
+
+-- Sound kit IDs for PlaySound (which is silent in the sandbox).
+SOUNDKIT = {
+  IG_MAINMENU_OPEN = 850, IG_MAINMENU_CLOSE = 851, IG_MAINMENU_OPTION = 852, IG_MAINMENU_OPTION_CHECKBOX_ON = 856,
+  IG_MAINMENU_OPTION_CHECKBOX_OFF = 857, IG_MAINMENU_QUIT = 853, IG_MAINMENU_LOGOUT = 854, IG_CHARACTER_INFO_OPEN = 839,
+  IG_CHARACTER_INFO_CLOSE = 840, IG_CHARACTER_INFO_TAB = 841, IG_SPELLBOOK_OPEN = 829, IG_SPELLBOOK_CLOSE = 830,
+  IG_ABILITY_PAGE_TURN = 834, IG_QUEST_LOG_OPEN = 844, IG_QUEST_LOG_CLOSE = 845, IG_BACKPACK_OPEN = 862,
+  IG_BACKPACK_CLOSE = 863, IG_BACKPACK_COIN_SELECT = 864, IG_BACKPACK_COIN_OK = 865, IG_PLAYER_INVITE = 880,
+  U_CHAT_SCROLL_BUTTON = 1115, GS_TITLE_OPTION_OK = 798, GS_TITLE_OPTION_EXIT = 799, LOOT_WINDOW_COIN_SOUND = 120,
+  TELL_MESSAGE = 3081, RAID_WARNING = 8959, READY_CHECK = 8960, ALARM_CLOCK_WARNING_3 = 12889, UI_BNET_TOAST = 18019,
+  IG_MINIMAP_OPEN = 891, IG_MINIMAP_CLOSE = 892,
+}
 
 ---------------------------------------------------------------------------
 -- Macros (account slots 1..120, character slots 121..138), kept in memory

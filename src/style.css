@@ -70,6 +70,14 @@ main { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1
 .stage .f[data-type="Button"], .stage .f[data-type="CheckButton"] { cursor: pointer; }
 .stage .f.disabled { cursor: default !important; }
 .inline-tex { display: inline-block; width: 1em; height: 1em; background: linear-gradient(135deg, #6a5acd, #2f3d8f); border-radius: 2px; vertical-align: -2px; }
+.inline-tex.coin { border-radius: 50%; box-shadow: inset 0 0 0 1px #0006; }
+.inline-tex.gold { background: radial-gradient(circle at 35% 35%, #fff3b0, #e8b923 55%, #8a6410); }
+.inline-tex.silver { background: radial-gradient(circle at 35% 35%, #ffffff, #c0c6cf 55%, #6c737d); }
+.inline-tex.copper { background: radial-gradient(circle at 35% 35%, #ffd2a8, #c46b2c 55%, #6e3412); }
+.inline-tex.glyph { background: none; font-weight: 700; line-height: 1; text-align: center; overflow: hidden; }
+.inline-tex.ok { color: #19ff19; }
+.inline-tex.no { color: #ff2020; }
+.inline-tex.wait { color: #ffd100; }
 .inspect-overlay { position: absolute; z-index: 2147483000; pointer-events: none; display: none; outline: 2px solid var(--blue); background: #71d5ff22; box-shadow: 0 0 0 1px #000 inset; }
 
 .empty { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
@@ -106,6 +114,7 @@ body.drag .stage-area { outline: 2px dashed var(--gold); outline-offset: -8px; }
 .log .l.warn { color: var(--yellow); }
 .log .l.info, .log .l.ui { color: var(--blue); }
 .log .t { color: #5d6882; margin-right: 8px; }
+.log .l.game { color: var(--gold-dim); }
 
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chips button { font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; padding: 4px 8px; }
@@ -140,3 +149,18 @@ body.drag .stage-area { outline: 2px dashed var(--gold); outline-offset: -8px; }
   main { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) 320px; }
   .side { border-left: 0; border-top: 1px solid var(--line); }
 }
+
+.grp .row { align-items: center; flex-wrap: wrap; }
+.grp .row select { min-width: 0; flex: 1; }
+.grp input.count { width: 56px; flex: none; }
+.itemlist { display: grid; gap: 2px; max-height: 180px; overflow: auto; font-size: 12px; }
+.itemrow { display: flex; align-items: center; gap: 6px; justify-content: space-between; }
+.itemrow .item { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.itemrow button.mini { padding: 1px 6px; }
+.corpses { display: grid; gap: 6px; }
+.corpse { border-top: 1px solid var(--line); padding-top: 6px; display: grid; gap: 3px; }
+.corpse .loot { display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: 12px; }
+.corpse b { color: var(--text); font-weight: 600; }
+.grp details summary { cursor: pointer; color: var(--muted); }
+.grp .spawn { display: grid; gap: 6px; margin-top: 6px; }
+.grp .spawn .row input:not(.count) { flex: 1; min-width: 0; }

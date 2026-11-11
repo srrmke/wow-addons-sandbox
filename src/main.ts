@@ -71,6 +71,13 @@ function setStatus(text: string, kind: "" | "ok" | "bad" = "") {
 const runtime = new Runtime({
   log: addLog,
   requestReload: () => setTimeout(() => void reload("ReloadUI"), 0),
+  gameEvent: (text) => {
+    logEvent(text, true)
+    if (/^(BAG_UPDATE_DELAYED|PLAYER_MONEY)\(/.test(text)) refreshBagView()
+    if (/^(LOOT_CLOSED|LOOT_OPENED|LOOT_SLOT_CLEARED|CVAR_UPDATE)\(/.test(text)) refreshLootView()
+  },
+  persist: (key, json) => { try { localStorage.setItem(`wowsb:state:${key}`, json) } catch { /* storage unavailable */ } },
+  restore: (key) => { try { return localStorage.getItem(`wowsb:state:${key}`) ?? undefined } catch { return undefined } },
 })
 
 const stage = $("stage")
@@ -140,6 +147,17 @@ stage.addEventListener("pointermove", (e) => {
   const r = stage.getBoundingClientRect()
   runtime.mouseMove((e.clientX - r.left) / zoomK, screen.h - (e.clientY - r.top) / zoomK)
 })
+// A Shift-click must count even if the page didn't see the Shift key go down (e.g. it wasn't focused), so pointer
+// events also carry the modifiers; the capture listener runs before the frame's own handler.
+let lastMods = ""
+function syncMods(e: MouseEvent) {
+  const key = `${e.shiftKey}${e.ctrlKey}${e.altKey}`
+  if (key === lastMods || !runtime.ready) return
+  lastMods = key
+  runtime.setMock({ mods: { shift: e.shiftKey, ctrl: e.ctrlKey, alt: e.altKey } })
+}
+stage.addEventListener("pointerdown", syncMods, { capture: true })
+stage.addEventListener("pointermove", syncMods)
 
 // ------------------------------------------------------------ source I/O
 async function collect(src: Source): Promise<{ addons: Addon[]; files: RawFile[] }> {
@@ -328,17 +346,46 @@ cmd.addEventListener("keydown", (e) => {
 })
 
 // -------------------------------------------------------------- keyboard
-const keyName = (e: KeyboardEvent) => (e.key.length === 1 ? e.key.toUpperCase() : e.key === "Escape" ? "ESCAPE" : e.key.toUpperCase())
+// The game's key names: LSHIFT/RSHIFT, LCTRL, LALT, SPACE, ENTER, UP, NUMPAD1, F1…, letters as typed (AZERTY-friendly).
+const CODE_KEYS: Record<string, string> = {
+  ShiftLeft: "LSHIFT", ShiftRight: "RSHIFT", ControlLeft: "LCTRL", ControlRight: "RCTRL", AltLeft: "LALT", AltRight: "RALT",
+  MetaLeft: "LMETA", MetaRight: "RMETA", Space: "SPACE", Enter: "ENTER", NumpadEnter: "NUMPADENTER", Escape: "ESCAPE", Tab: "TAB",
+  Backspace: "BACKSPACE", Delete: "DELETE", Insert: "INSERT", Home: "HOME", End: "END", PageUp: "PAGEUP", PageDown: "PAGEDOWN",
+  ArrowUp: "UP", ArrowDown: "DOWN", ArrowLeft: "LEFT", ArrowRight: "RIGHT", CapsLock: "CAPSLOCK", NumLock: "NUMLOCK",
+  ScrollLock: "SCROLLLOCK", PrintScreen: "PRINTSCREEN", Pause: "PAUSE", NumpadAdd: "NUMPADPLUS", NumpadSubtract: "NUMPADMINUS",
+  NumpadMultiply: "NUMPADMULTIPLY", NumpadDivide: "NUMPADDIVIDE", NumpadDecimal: "NUMPADDECIMAL", Minus: "-", Equal: "=",
+  BracketLeft: "[", BracketRight: "]", Backslash: "\\", Semicolon: ";", Quote: "'", Comma: ",", Period: ".", Slash: "/", Backquote: "`",
+}
+const KEY_FALLBACK: Record<string, string> = { Shift: "LSHIFT", Control: "LCTRL", Alt: "LALT", Meta: "LMETA", " ": "SPACE", Enter: "ENTER", Escape: "ESCAPE" }
+function keyName(e: KeyboardEvent): string {
+  if (/^[a-z]$/i.test(e.key)) return e.key.toUpperCase()
+  const code = CODE_KEYS[e.code]
+  if (code) return code
+  let m = e.code.match(/^Digit(\d)$/)
+  if (m) return m[1]
+  m = e.code.match(/^Numpad(\d)$/)
+  if (m) return "NUMPAD" + m[1]
+  if (/^F\d{1,2}$/.test(e.code)) return e.code
+  return KEY_FALLBACK[e.key] ?? (e.key.startsWith("Arrow") ? e.key.slice(5).toUpperCase() : e.key.toUpperCase())
+}
+const STAGE_KEYS = new Set(["Tab", " ", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Escape"])
+const isTyping = (t: HTMLElement) => t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable
 window.addEventListener("keydown", (e) => {
   const t = e.target as HTMLElement
-  if (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT") return
+  if (isTyping(t)) return
+  // keys the game uses shouldn't scroll the page or move browser focus while the stage has it
+  if (STAGE_KEYS.has(e.key) && (t === document.body || stage.contains(t))) e.preventDefault()
   runtime.setMock({ mods: { shift: e.shiftKey, ctrl: e.ctrlKey, alt: e.altKey } })
+  if (e.repeat && /SHIFT|CTRL|ALT|META/.test(keyName(e))) return
   runtime.key(keyName(e), true)
 })
 window.addEventListener("keyup", (e) => {
   runtime.setMock({ mods: { shift: e.shiftKey, ctrl: e.ctrlKey, alt: e.altKey } })
+  if (isTyping(e.target as HTMLElement)) return
   runtime.key(keyName(e), false)
 })
+// switching windows while holding a modifier would leave it stuck down
+window.addEventListener("blur", () => { if (runtime.ready) runtime.setMock({ mods: { shift: false, ctrl: false, alt: false } }) })
 
 // ------------------------------------------------------------------ tabs
 $("tabs").addEventListener("click", (e) => {
@@ -370,14 +417,20 @@ const EVENTS: { name: string; args?: unknown[]; mock?: unknown }[] = [
   { name: "PLAYER_LOGOUT" },
 ]
 const eventLog = $("event-log")
+/** fromGame: fired by the sandbox's own simulation (loot, bags, CVars…) rather than from this panel. */
+function logEvent(text: string, fromGame = false) {
+  const d = document.createElement("div")
+  d.className = "l" + (fromGame ? " game" : "")
+  d.textContent = `${stamp()}  ${fromGame ? "◆ " : ""}${text}`
+  const stick = eventLog.scrollTop + eventLog.clientHeight >= eventLog.scrollHeight - 30
+  eventLog.appendChild(d)
+  while (eventLog.childElementCount > 400) eventLog.firstElementChild!.remove()
+  if (stick) eventLog.scrollTop = eventLog.scrollHeight
+}
 function fireEvent(name: string, args: unknown[] = [], mock?: unknown) {
   if (mock) runtime.setMock(mock)
   runtime.fire(name, ...args)
-  const d = document.createElement("div")
-  d.className = "l"
-  d.textContent = `${stamp()}  ${name}(${args.map((a) => JSON.stringify(a)).join(", ")})`
-  eventLog.appendChild(d)
-  eventLog.scrollTop = eventLog.scrollHeight
+  logEvent(`${name}(${args.map((a) => JSON.stringify(a)).join(", ")})`)
 }
 $("event-chips").replaceChildren(...EVENTS.map((ev) => {
   const b = document.createElement("button")
@@ -427,6 +480,9 @@ function buildGameForm() {
   const gc = grp("Context")
   gc.insertAdjacentHTML("beforeend", `<label class="plain">In combat <input type="checkbox" id="g-combat" ${mock.combat ? "checked" : ""} /></label>
     <p class="muted">Hold Shift / Ctrl / Alt over the stage to drive <code>IsShiftKeyDown()</code> and friends.</p>`)
+  gc.append(h("div", { className: "row" },
+    h("button", { className: "mini", onclick: () => runtime.invoke("__ToggleSettings") }, "Options window"),
+    h("button", { className: "mini", onclick: () => runtime.invoke("ToggleBackpack") }, "Backpack")))
 
   const num = (id: string) => Number(($(id) as HTMLInputElement).value)
   const label = (id: string, text: string) => { $(id).textContent = text }
@@ -474,6 +530,131 @@ function buildGameForm() {
     runtime.fire(on ? "PLAYER_REGEN_DISABLED" : "PLAYER_REGEN_ENABLED")
   })
   writeJson("wowsb:mock", undefined)
+  buildLootGroup(grp("Loot"))
+  buildBagGroup(grp("Bags"))
+}
+
+// ------------------------------------------------------------ world: loot
+interface LootRow { id?: number; count?: number; name?: string; quality?: number; money?: number }
+interface LootState { corpses: { index: number; guid: string; name: string; level: number; ctype: string; loot: LootRow[]; opened: boolean }[]; open: boolean; autoLoot: boolean }
+const fmtMoney = (c: number) => [c >= 10000 && `${Math.floor(c / 10000)}g`, c >= 100 && `${Math.floor(c / 100) % 100}s`, `${c % 100}c`].filter(Boolean).join(" ")
+let refreshLootView = () => {}
+function buildLootGroup(g: HTMLElement) {
+  const auto = h("input", { type: "checkbox", onchange: () => runtime.invoke("SetCVar", "autoLootDefault", auto.checked ? "1" : "0") })
+  const list = h("div", { className: "corpses" })
+  // spawn form
+  const name = h("input", { value: "Kobold Vermin", placeholder: "Name" })
+  const level = h("input", { type: "number", min: "1", max: "63", value: "3", className: "count" })
+  const ctype = h("select", null, ...["Beast", "Humanoid", "Undead", "Elemental", "Demon", "Dragonkin", "Critter"].map((t) => h("option", null, t)))
+  const pick = itemSelect("g-loot-item")
+  const pickCount = h("input", { type: "number", min: "1", value: "1", className: "count" })
+  const copper = h("input", { type: "number", min: "0", value: "0", className: "count", title: "Money in copper" })
+  let pending: LootRow[] = []
+  const pendingView = h("div", { className: "itemlist" })
+  const showPending = () => {
+    pendingView.replaceChildren(...pending.map((p, i) => h("div", { className: "itemrow" }, itemLabel(p.name!, p.quality!, p.count),
+      h("button", { className: "mini", onclick: () => { pending.splice(i, 1); showPending() } }, "✕"))))
+  }
+  const addPending = () => {
+    const o = pick.selectedOptions[0]
+    if (!o) return
+    pending.push({ id: Number(pick.value), count: Math.max(1, Number(pickCount.value) || 1), name: o.textContent!.replace(/ \(\d+\)$/, ""), quality: Number(o.dataset.quality) || 0 })
+    showPending()
+  }
+  const spawn = () => {
+    const loot: LootRow[] = pending.map((p) => ({ id: p.id, count: p.count }))
+    if (Number(copper.value) > 0) loot.push({ money: Number(copper.value) })
+    if (!loot.length) { addLog("warn", "Add at least one item or some money to the corpse's loot."); return }
+    runtime.invoke("__LootSpawn", JSON.stringify({ name: name.value || "Corpse", level: Number(level.value) || 1, ctype: ctype.value, loot }))
+    pending = []
+    showPending()
+    refreshLootView()
+  }
+  const act = (fn: () => void) => () => { fn(); refreshLootView() }
+  g.append(
+    h("label", { className: "plain" }, "Auto loot", h("span", null, auto, " ", h("code", null, "autoLootDefault"), " CVar")),
+    list,
+    h("div", { className: "row" },
+      h("button", { className: "mini", onclick: act(() => runtime.invoke("__LootSpawnSamples")) }, "Spawn sample corpses"),
+      h("button", { className: "mini", title: "Area loot: every corpse into one loot window", onclick: act(() => runtime.invoke("__LootOpen", "all", false)) }, "Loot all"),
+      h("button", { className: "mini danger", onclick: act(() => runtime.invoke("__LootClear")) }, "Clear")),
+    h("details", null, h("summary", null, "New corpse…"), h("div", { className: "spawn" },
+      h("div", { className: "row" }, name, level, ctype),
+      h("div", { className: "row" }, pick, pickCount, h("button", { className: "mini", onclick: addPending }, "Add item")),
+      pendingView,
+      h("div", { className: "row" }, h("span", { className: "muted" }, "Money (copper)"), copper, h("button", { className: "mini primary", onclick: spawn }, "Spawn")))),
+    h("p", { className: "muted" }, "Corpses appear at the bottom of the screen: hover for the unit tooltip, click to loot, Shift-click to invert auto loot."),
+  )
+  refreshLootView = () => {
+    const st = runtime.query<LootState>("__LootState")
+    if (!st) return
+    auto.checked = st.autoLoot
+    list.replaceChildren(...st.corpses.map((c) => h("div", { className: "corpse" },
+      h("div", { className: "itemrow" },
+        h("b", null, `${c.name} `, h("span", { className: "muted" }, `${c.level} ${c.ctype}${c.opened ? " · opened" : ""}`)),
+        h("span", null,
+          h("button", { className: "mini", disabled: !c.loot.length, onclick: act(() => runtime.invoke("__LootOpen", c.index, false)) }, "Loot"),
+          h("button", { className: "mini", disabled: !c.loot.length, title: "Shift: inverts auto loot", onclick: act(() => runtime.invoke("__LootOpen", c.index, true)) }, "⇧ Loot"),
+          h("button", { className: "mini", title: "Remove", onclick: act(() => runtime.invoke("__LootRemove", c.index)) }, "✕"))),
+      h("div", { className: "loot" }, ...(c.loot.length ? c.loot.map((l) => l.money ? h("span", { className: "item" }, fmtMoney(l.money)) : itemLabel(l.name!, l.quality!, l.count))
+        : [h("span", { className: "muted" }, "no loot left")])))))
+    if (!st.corpses.length) list.append(h("span", { className: "muted" }, "No corpses. Spawn some below."))
+  }
+  refreshLootView()
+}
+
+// ------------------------------------------------------------ world: bags
+interface ItemRow { id: number; name: string; quality: number }
+const QUALITY_HEX = ["#9d9d9d", "#ffffff", "#1eff00", "#0070dd", "#a335ee", "#ff8000", "#e6cc80", "#00ccff", "#00ccff"]
+
+/** Tiny DOM helper: h("button", { className: "mini", onclick }, "text", child…) */
+function h<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLElementTagNameMap[K]> | null = null, ...kids: (Node | string)[]): HTMLElementTagNameMap[K] {
+  const el = Object.assign(document.createElement(tag), props ?? {})
+  el.append(...kids)
+  return el
+}
+function itemSelect(id: string): HTMLSelectElement {
+  const items = runtime.query<ItemRow[]>("__ItemList") ?? []
+  return h("select", { id }, ...items.map((it) => {
+    const o = h("option", { value: String(it.id) }, `${it.name} (${it.id})`)
+    o.style.color = QUALITY_HEX[it.quality] ?? ""
+    o.dataset.quality = String(it.quality)
+    return o
+  }))
+}
+function itemLabel(name: string, quality: number, count?: number): HTMLElement {
+  const s = h("span", null, `[${name}]`)
+  s.style.color = QUALITY_HEX[quality] ?? ""
+  return h("span", { className: "item" }, s, count && count > 1 ? ` ×${count}` : "")
+}
+
+interface BagState { slots: { slot: number; id: number; count: number; name: string; quality: number }[]; free: number; money: number }
+let refreshBagView = () => {}
+function buildBagGroup(g: HTMLElement) {
+  const list = h("div", { className: "itemlist" })
+  const money = h("span", { className: "val" })
+  const sel = itemSelect("g-give-item")
+  const count = h("input", { type: "number", min: "1", value: "1", className: "count" })
+  g.append(
+    h("div", { className: "row" }, h("button", { className: "mini", onclick: () => runtime.invoke("ToggleBackpack") }, "Open / close backpack (B)"), money),
+    list,
+    h("div", { className: "row" }, sel, count, h("button", { className: "mini", onclick: () => {
+      const n = Math.max(1, Number(count.value) || 1)
+      const added = runtime.invoke("__BagAdd", Number(sel.value), n) as number
+      if (added < n) addLog("ui", "Inventory is full.")
+    } }, "Give")),
+    h("p", { className: "muted" }, "Left-click a bag item on the stage to pick it up (", h("code", null, "GetCursorInfo"), "), click a slot to put it down, right-click or Esc to drop it back."),
+  )
+  refreshBagView = () => {
+    const st = runtime.query<BagState>("__BagState")
+    if (!st) return
+    money.textContent = `${Math.floor(st.money / 10000)}g ${Math.floor(st.money / 100) % 100}s ${st.money % 100}c`
+    list.replaceChildren(...st.slots.map((s) => h("div", { className: "itemrow" }, itemLabel(s.name, s.quality, s.count),
+      h("button", { className: "mini", title: "Destroy", onclick: () => runtime.invoke("__BagClear", s.slot) }, "✕"))))
+    if (!st.slots.length) list.append(h("span", { className: "muted" }, "Empty"))
+    list.append(h("span", { className: "muted" }, `${st.free} free slot(s)`))
+  }
+  refreshBagView()
 }
 
 // -------------------------------------------------------------- inspector
@@ -546,6 +727,11 @@ $("btn-reset-sv").addEventListener("click", () => {
   writeJson("wowsb:sv", svCache)
   addLog("info", "SavedVariables cleared — reloading")
   void reload("Reset SavedVariables", { rescan: false })
+})
+$("btn-reset-client").addEventListener("click", () => {
+  for (const key of ["cvars", "bindings"]) { try { localStorage.removeItem(`wowsb:state:${key}`) } catch { /* ignore */ } }
+  addLog("info", "CVars and key bindings reset to defaults — reloading")
+  void reload("Reset client settings", { rescan: false })
 })
 
 // -------------------------------------------------------------- main loop

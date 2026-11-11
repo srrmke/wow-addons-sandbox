@@ -208,6 +208,7 @@ local fire
 local function propagateShow(o, show)
   local s = S[o]
   if s.kind == "frame" then
+    if not show and __focus == o then o:ClearFocus() end -- a hidden edit box loses the focus
     fire(o, show and "OnShow" or "OnHide")
     for _, c in ipairs(s.children) do
       if S[c].shown then propagateShow(c, show) end
@@ -756,6 +757,8 @@ function Frame:SetID(id) S[self].frameId = id end
 function Frame:GetID() return S[self].frameId or 0 end
 function Frame:RegisterForDrag(...) S[self].drag = { ... } end
 function Frame:SetPropagateKeyboardInput(b) S[self].propagateKeys = b end
+function Frame:GetPropagateKeyboardInput() return S[self].propagateKeys or false end
+function Frame:IsKeyboardEnabled() return S[self].keyboard or false end
 function Frame:GetChildren() return unpack(S[self].children) end
 function Frame:GetRegions() return unpack(S[self].regions) end
 function Frame:GetNumChildren() return #S[self].children end
@@ -1007,10 +1010,15 @@ function EditBox:SetFontObject(fo) S[self].fontObj = resolveRel(fo) dirty() end
 function EditBox:SetTextColor(r, g, b, a) S[self].color = { r, g, b, a or 1 } dirty() end
 function EditBox:SetTextInsets(l, r, t, b) S[self].insets = { l or 0, r or 0, t or 0, b or 0 } dirty() end
 function EditBox:SetJustifyH(j) S[self].jh = j dirty() end
-function EditBox:SetFocus() S[self].wantFocus = true __focus = self dirty() fire(self, "OnEditFocusGained") end
+function EditBox:SetFocus()
+  if __focus == self then return end
+  local old = __focus
+  if old and S[old] then old:ClearFocus() end
+  S[self].wantFocus = true __focus = self dirty() fire(self, "OnEditFocusGained")
+end
 function EditBox:ClearFocus()
-  if __focus == self then __focus = nil fire(self, "OnEditFocusLost") end
   S[self].wantFocus = false dirty()
+  if __focus == self then __focus = nil fire(self, "OnEditFocusLost") end
 end
 function EditBox:HasFocus() return __focus == self end
 function EditBox:HighlightText() end
@@ -1050,6 +1058,7 @@ end
 function Slider:GetValue() return S[self].val or S[self].min or 0 end
 function Slider:Enable() S[self].disabled = false dirty() end
 function Slider:Disable() S[self].disabled = true dirty() end
+function Slider:SetEnabled(b) if b then self:Enable() else self:Disable() end end
 function Slider:IsEnabled() return not S[self].disabled end
 
 ---------------------------------------------------------------------------
@@ -1141,25 +1150,33 @@ function MessageFrame:SetFontObject(fo) S[self].fontObj = resolveRel(fo) dirty()
 ---------------------------------------------------------------------------
 -- GameTooltip
 ---------------------------------------------------------------------------
+local TIP_WRAP_MIN = 220 -- wrapped lines never make the tooltip wider than its other lines, or this
 local function tipRelayout(self)
   local s = S[self]
   local lines = s.tipLines
-  local w, h = 0, 12
+  -- width: the widest non-wrapping line; wrapping lines are then wrapped to that width
+  local w = 0
+  for i = 1, s.tipUsed or 0 do
+    local ln = lines[i]
+    S[ln.left].w = nil
+    local lw = ln.left:GetStringWidth()
+    local rw = (ln.rtext and ln.right:GetStringWidth() + 20) or 0
+    if ln.wrap then w = max(w, min(lw, TIP_WRAP_MIN)) else w = max(w, lw + rw) end
+  end
+  local h = 10
   for i, ln in ipairs(lines) do
     local fsL = ln.left
     local fsR = ln.right
-    local lw = fsL:GetStringWidth()
-    local rw = (ln.rtext and fsR:GetStringWidth() + 20) or 0
-    w = max(w, lw + rw)
+    if ln.wrap and i <= (s.tipUsed or 0) and fsL:GetStringWidth() > w then S[fsL].w = w end
     fsL:ClearAllPoints()
     fsL:SetPoint("TOPLEFT", self, "TOPLEFT", 10, -h)
     fsL:SetJustifyH("LEFT")
     fsR:ClearAllPoints()
     fsR:SetPoint("TOPRIGHT", self, "TOPRIGHT", -10, -h)
     fsR:SetJustifyH("RIGHT")
-    h = h + fsL:GetStringHeight() + 2
+    if i <= (s.tipUsed or 0) then h = h + fsL:GetStringHeight() + 2 end
   end
-  s.w, s.h = max(w + 20, 40), h + 10
+  s.w, s.h = max(w + 20, 40), h + 8
   ldirty()
 end
 local function tipEnsure(self)
@@ -1170,6 +1187,7 @@ function Tooltip:SetOwner(owner, anchor, x, y)
   local s = S[self]
   tipEnsure(self)
   s.owner = owner
+  s.tipData = nil
   self:ClearLines()
   self:ClearAllPoints()
   anchor = anchor or "ANCHOR_RIGHT"
@@ -1182,13 +1200,15 @@ function Tooltip:SetOwner(owner, anchor, x, y)
   local m = map[anchor]
   if m and owner then self:SetPoint(m[1], owner, m[2], x, y)
   elseif anchor == "ANCHOR_CURSOR" then self:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", __cursor.x + 12, __cursor.y + 12)
-  else self:SetPoint("BOTTOMRIGHT", UIParent, "BOTTOMRIGHT", -20, 100) end
+  elseif anchor ~= "ANCHOR_NONE" then self:SetPoint("BOTTOMRIGHT", UIParent, "BOTTOMRIGHT", -20, 100) end
+  -- ANCHOR_NONE: the caller positions the tooltip itself
 end
 function Tooltip:ClearLines()
   local s = S[self]
   tipEnsure(self)
   for _, ln in ipairs(s.tipLines) do ln.left:SetText("") ln.right:SetText("") ln.rtext = nil end
   s.tipUsed = 0
+  if not s.tipBuilding then s.tipData = nil end
   tipRelayout(self)
 end
 function Tooltip:NumLines() return S[self].tipUsed or 0 end
@@ -1210,6 +1230,9 @@ function Tooltip:AddLine(text, r, g, b, wrap)
   ln.right:SetFontObject(GameTooltipText)
   ln.left:SetTextColor(r or 1, g or 1, b or 1)
   ln.left:SetText(text)
+  ln.wrap = wrap and true or false
+  ln.left:SetWordWrap(ln.wrap)
+  ln.right:SetWordWrap(false)
   ln.right:SetText("")
   ln.rtext = nil
   tipRelayout(self)
@@ -1222,14 +1245,182 @@ function Tooltip:AddDoubleLine(l, r, lr, lg, lb, rr, rg, rb)
   ln.right:SetTextColor(rr or 1, rg or 1, rb or 1)
   tipRelayout(self)
 end
-function Tooltip:SetText(text, r, g, b)
+function Tooltip:SetText(text, r, g, b, a, wrap)
   self:ClearLines()
-  self:AddLine(text, r or 1, g or 1, b or 1)
+  self:AddLine(text, r or 1, g or 1, b or 1, wrap)
 end
-function Tooltip:SetUnit(unit) self:SetText(UnitName(unit) or unit) end
-function Tooltip:SetHyperlink(link) self:SetText(tostring(link)) end
-function Tooltip:SetSpellByID(id) self:SetText((GetSpellInfo and GetSpellInfo(id)) or ("Spell " .. tostring(id))) end
-function Tooltip:SetItemByID(id) self:SetText("Item " .. tostring(id)) end
+
+-- Tooltip data: SetItemByID & co. build the lines, then run TooltipDataProcessor callbacks with the data.
+Enum = Enum or {}
+Enum.TooltipDataType = {
+  Item = 0, Spell = 1, Unit = 2, Corpse = 3, Object = 4, Currency = 5, BattlePet = 6, UnitAura = 7, AzeriteEssence = 8,
+  CompanionPet = 9, Mount = 10, PetAction = 11, Achievement = 12, EnhancedConduit = 13, EquipmentSet = 14, InstanceLock = 15,
+  PvPBrawl = 16, RecipeRankInfo = 17, Totem = 18, Toy = 19, CorruptionCleanser = 20, MinimapMouseover = 21, Flyout = 22,
+  Quest = 23, QuestPartyProgress = 24, Macro = 25, Debug = 26,
+}
+local tipCalls = { pre = {}, post = {} }
+TooltipDataProcessor = { AllTypes = "ALL" }
+function TooltipDataProcessor.AddTooltipPreCall(kind, fn) local l = tipCalls.pre[kind] or {} tipCalls.pre[kind] = l l[#l + 1] = fn end
+function TooltipDataProcessor.AddTooltipPostCall(kind, fn) local l = tipCalls.post[kind] or {} tipCalls.post[kind] = l l[#l + 1] = fn end
+function TooltipDataProcessor.AddLinePreCall() end
+function TooltipDataProcessor.AddLinePostCall() end
+local function runTipCalls(list, tip, data)
+  for _, kind in ipairs({ data.type, "ALL" }) do
+    for _, fn in ipairs(list[kind] or {}) do __safecall(fn, tip, data) end
+  end
+end
+
+-- build(self) adds the lines; data is what the processor callbacks receive (type, id / guid, hyperlink…).
+local function tipSetData(self, data, build)
+  local s = S[self]
+  s.tipBuilding = true
+  self:ClearLines()
+  s.tipBuilding = nil
+  s.tipData = { data = data, build = build }
+  local pre = false
+  for _, kind in ipairs({ data.type, "ALL" }) do
+    for _, fn in ipairs(tipCalls.pre[kind] or {}) do
+      local ok, stop = __safecall(fn, self, data)
+      if ok and stop then pre = true end
+    end
+  end
+  if not pre then build(self) end
+  local lines = {}
+  for i = 1, s.tipUsed or 0 do
+    local ln = s.tipLines[i]
+    lines[i] = { leftText = ln.left:GetText(), rightText = ln.rtext, type = 0 }
+  end
+  data.lines = lines
+  runTipCalls(tipCalls.post, self, data)
+  self:Show()
+end
+
+local function coinText(copper) return GetCoinTextureString and GetCoinTextureString(copper) or tostring(copper) end
+local equipNames = {
+  INVTYPE_HEAD = "Head", INVTYPE_NECK = "Neck", INVTYPE_SHOULDER = "Shoulder", INVTYPE_CHEST = "Chest", INVTYPE_ROBE = "Chest",
+  INVTYPE_WAIST = "Waist", INVTYPE_LEGS = "Legs", INVTYPE_FEET = "Feet", INVTYPE_WRIST = "Wrist", INVTYPE_HAND = "Hands",
+  INVTYPE_FINGER = "Finger", INVTYPE_TRINKET = "Trinket", INVTYPE_CLOAK = "Back", INVTYPE_WEAPON = "One-Hand",
+  INVTYPE_2HWEAPON = "Two-Hand", INVTYPE_WEAPONMAINHAND = "Main Hand", INVTYPE_WEAPONOFFHAND = "Off Hand", INVTYPE_SHIELD = "Off Hand",
+}
+local weaponShort = { [0] = "Axe", [4] = "Mace", [7] = "Sword", [10] = "Staff", [15] = "Dagger" }
+local bindText = { [1] = "Binds when picked up", [2] = "Binds when equipped", [3] = "Binds when used", [4] = "Quest Item" }
+
+local function buildItem(id)
+  return function(self)
+    local it = __itemDB and __itemDB[id]
+    if not it then self:AddLine("Retrieving item information", 1, 0.1, 0.1) return end
+    if __CacheItem then __CacheItem(id) end
+    local q = ITEM_QUALITY_COLORS[it.quality] or ITEM_QUALITY_COLORS[1]
+    self:AddLine(it.name, q.r, q.g, q.b)
+    if bindText[it.bind or 0] then self:AddLine(bindText[it.bind], 1, 1, 1) end
+    if it.unique then self:AddLine("Unique", 1, 1, 1) end
+    if it.equip then
+      local right = it.class == 2 and weaponShort[it.sub] or (it.class == 4 and it.sub > 0 and GetItemSubClassInfo(it.class, it.sub)) or nil
+      if right then self:AddDoubleLine(equipNames[it.equip] or "", right, 1, 1, 1, 1, 1, 1)
+      else self:AddLine(equipNames[it.equip] or "", 1, 1, 1) end
+    end
+    for _, l in ipairs(it.lines or {}) do self:AddLine(l, 1, 1, 1, true) end
+    if (it.minLevel or 0) > 1 then
+      local low = UnitLevel("player") < it.minLevel
+      self:AddLine("Requires Level " .. it.minLevel, 1, low and 0.13 or 1, low and 0.13 or 1)
+    end
+    if (it.sell or 0) > 0 then self:AddLine("Sell Price: " .. coinText(it.sell), 1, 1, 1) end
+  end
+end
+function Tooltip:SetItemByID(id)
+  id = tonumber(id)
+  if not id then return end
+  local link = __ItemLink and __ItemLink(id)
+  tipSetData(self, { type = Enum.TooltipDataType.Item, id = id, hyperlink = link }, buildItem(id))
+end
+function Tooltip:SetHyperlink(link)
+  link = tostring(link or "")
+  local kind, id = string.match(link, "|?H?(%a+):(%-?%d+)")
+  if kind == "item" then return self:SetItemByID(tonumber(id)) end
+  if kind == "spell" then return self:SetSpellByID(tonumber(id)) end
+  if kind == "unit" then return self:SetUnit(id) end
+  self:SetText(link)
+  self:Show()
+end
+function Tooltip:SetBagItem(bag, slot)
+  local id = C_Container and C_Container.GetContainerItemID(bag, slot)
+  if id then self:SetItemByID(id) end
+end
+function Tooltip:SetLootItem(slot)
+  local link = GetLootSlotLink and GetLootSlotLink(slot)
+  if link then self:SetHyperlink(link) end
+end
+function Tooltip:SetSpellByID(id)
+  tipSetData(self, { type = Enum.TooltipDataType.Spell, id = id }, function(t)
+    t:AddLine((GetSpellInfo and GetSpellInfo(id)) or ("Spell " .. tostring(id)), 1, 1, 1)
+  end)
+end
+function Tooltip:SetUnit(unit)
+  if not UnitExists(unit) then return end
+  local guid = UnitGUID(unit)
+  tipSetData(self, { type = Enum.TooltipDataType.Unit, guid = guid, unitToken = unit }, function(t)
+    local r, g, b = 1, 0.82, 0
+    if UnitIsPlayer(unit) then
+      local c = RAID_CLASS_COLORS[select(2, UnitClass(unit)) or ""]
+      if c then r, g, b = c.r, c.g, c.b end
+    elseif UnitIsEnemy("player", unit) then r, g, b = 1, 0.13, 0.13
+    else r, g, b = 0.13, 1, 0.13 end
+    if UnitIsDead(unit) and not UnitIsPlayer(unit) then r, g, b = 0.5, 0.5, 0.5 end
+    t:AddLine(UnitName(unit) or unit, r, g, b)
+    local lvl = UnitLevel(unit)
+    if UnitIsPlayer(unit) then
+      t:AddLine(string.format("Level %s %s %s (Player)", lvl, UnitRace(unit) or "", (UnitClass(unit))), 1, 1, 1)
+    else
+      t:AddLine(string.format("Level %s %s", lvl, UnitCreatureType(unit) or ""), 1, 1, 1)
+    end
+  end)
+end
+function Tooltip:GetItem()
+  local d = S[self].tipData
+  if not d or d.data.type ~= Enum.TooltipDataType.Item then return nil end
+  local id = d.data.id
+  local name = __itemDB and __itemDB[id] and __itemDB[id].name
+  return name or "", d.data.hyperlink, id
+end
+function Tooltip:GetUnit()
+  local d = S[self].tipData
+  if not d or d.data.type ~= Enum.TooltipDataType.Unit then return nil end
+  return UnitName(d.data.unitToken), d.data.unitToken, d.data.guid
+end
+function Tooltip:GetSpell()
+  local d = S[self].tipData
+  if not d or d.data.type ~= Enum.TooltipDataType.Spell then return nil end
+  return (GetSpellInfo(d.data.id)), d.data.id
+end
+function Tooltip:GetTooltipData() local d = S[self].tipData return d and d.data end
+Tooltip.GetPrimaryTooltipData = Tooltip.GetTooltipData
+function Tooltip:RefreshData()
+  local d = S[self].tipData
+  if not d then return end
+  local data = d.data
+  data.lines = nil
+  tipSetData(self, data, d.build)
+end
+function Tooltip:IsTooltipType(kind) local d = S[self].tipData return d ~= nil and d.data.type == kind end
+function Tooltip:SetMinimumWidth() end
+
+TooltipUtil = {
+  GetDisplayedItem = function(tip) return tip:GetItem() end,
+  GetDisplayedUnit = function(tip) return tip:GetUnit() end,
+  GetDisplayedSpell = function(tip) return tip:GetSpell() end,
+}
+function GameTooltip_Hide() GameTooltip:Hide() end
+function GameTooltip_SetDefaultAnchor(tip, parent)
+  tip:SetOwner(parent, "ANCHOR_NONE")
+  tip:SetPoint("BOTTOMRIGHT", UIParent, "BOTTOMRIGHT", -20, 100)
+end
+function GameTooltip_SetTitle(tip, text, color, wrap) local c = color or HIGHLIGHT_FONT_COLOR tip:SetText(text, c.r, c.g, c.b, 1, wrap) end
+function GameTooltip_AddColoredLine(tip, text, color, wrap) local c = color or HIGHLIGHT_FONT_COLOR tip:AddLine(text, c.r, c.g, c.b, wrap) end
+function GameTooltip_AddNormalLine(tip, text, wrap) GameTooltip_AddColoredLine(tip, text, NORMAL_FONT_COLOR, wrap) end
+function GameTooltip_AddHighlightLine(tip, text, wrap) GameTooltip_AddColoredLine(tip, text, HIGHLIGHT_FONT_COLOR, wrap) end
+function GameTooltip_AddErrorLine(tip, text, wrap) GameTooltip_AddColoredLine(tip, text, RED_FONT_COLOR, wrap) end
+function GameTooltip_AddInstructionLine(tip, text, wrap) GameTooltip_AddColoredLine(tip, text, GREEN_FONT_COLOR, wrap) end
+function GameTooltip_AddBlankLineToTooltip(tip) tip:AddLine(" ") end
 function Tooltip:GetOwner() return S[self].owner end
 function Tooltip:FadeOut() self:Hide() end
 function Tooltip:IsOwned(o) return S[self].owner == o end
@@ -1591,9 +1782,18 @@ function __Mouse(id, ev, btn, extra)
       end
     end
   elseif ev == "dragstart" then
+    -- a frame that starts a drag doesn't also get clicked when the button is released
+    if s.drag and #s.drag > 0 then s.down = false end
+    s.dragHadItem = CursorHasItem and CursorHasItem() or false
     fire(o, "OnDragStart", btn)
   elseif ev == "dragstop" then
     fire(o, "OnDragStop")
+    -- dropping what the drag put on the cursor onto another frame
+    local target = __hoverObj
+    -- (only when this drag picked the item up, not when moving a window while already holding one)
+    local picked = not s.dragHadItem and CursorHasItem and CursorHasItem()
+    s.dragHadItem = nil
+    if target and target ~= o and picked and S[target] then fire(target, "OnReceiveDrag") end
   elseif ev == "wheel" then
     -- bubble up to the nearest frame that handles the wheel (e.g. a ScrollFrame behind an EditBox)
     local target = o
@@ -1620,24 +1820,46 @@ function __EditInput(id, ev, text)
   elseif ev == "enter" then fire(o, "OnEnterPressed")
   elseif ev == "escape" then fire(o, "OnEscapePressed")
   elseif ev == "tab" then fire(o, "OnTabPressed")
-  elseif ev == "focus" then __focus = o fire(o, "OnEditFocusGained")
-  elseif ev == "blur" then if __focus == o then __focus = nil end fire(o, "OnEditFocusLost")
+  elseif ev == "focus" then o:SetFocus() -- clicking the input focuses the EditBox (and unfocuses the previous one)
+  elseif ev == "blur" then if __focus == o then o:ClearFocus() end
   end
 end
 
+local function frameZ(o)
+  local x, strata = o, nil
+  while x and not strata do strata = S[x].strata x = S[x].parent end
+  return (strataOrder[strata or "MEDIUM"] or 2) * 100000 + min(max(S[o].level or 1, 0), 99999)
+end
+
+-- Keyboard input, in the game's order: the focused edit box takes every key; otherwise keyboard-enabled frames
+-- get it top-most first, and one that doesn't propagate (SetPropagateKeyboardInput(false), the default) stops it;
+-- a key nobody kept runs its key binding (see 46_bindings.lua).
+local editKeys = { ENTER = "OnEnterPressed", NUMPADENTER = "OnEnterPressed", ESCAPE = "OnEscapePressed", TAB = "OnTabPressed", SPACE = "OnSpacePressed" }
+local arrows = { UP = true, DOWN = true, LEFT = true, RIGHT = true }
 function __Key(key, down)
-  if down and key == "ESCAPE" and not __focus then
-    for _, name in ipairs(UISpecialFrames) do
-      local f = _G[name]
-      if f and f.IsShown and f:IsShown() then f:Hide() end
+  local eb = __focus
+  if eb and S[eb] and isVisible(eb) then
+    if down then
+      if editKeys[key] then fire(eb, editKeys[key])
+      elseif arrows[key] then fire(eb, "OnArrowPressed", key) end
     end
+    return
   end
+  local list = {}
   for _, o in ipairs(allObjs) do
     local s = S[o]
-    if s.keyboard and s.shown and isVisible(o) then
+    if s.kind == "frame" and s.keyboard and isVisible(o) then list[#list + 1] = o end
+  end
+  local z = {}
+  for _, o in ipairs(list) do z[o] = frameZ(o) end
+  table.sort(list, function(a, b) if z[a] ~= z[b] then return z[a] > z[b] end return S[a].id > S[b].id end)
+  for _, o in ipairs(list) do
+    if S[o] and S[o].keyboard and isVisible(o) then
       fire(o, down and "OnKeyDown" or "OnKeyUp", key)
+      if not S[o].propagateKeys then return end
     end
   end
+  if __RunKeyBinding then __RunKeyBinding(key, down) end
 end
 
 function __Tick(dt)

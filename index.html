@@ -76,7 +76,7 @@
           </div>
 
           <div class="pane" id="pane-events">
-            <p class="muted">Fire game events at your addon. Frames that registered the event receive it through <code>OnEvent</code>.</p>
+            <p class="muted">Fire game events at your addon. Frames that registered the event receive it through <code>OnEvent</code>. Events the sandbox fires itself (loot, bags, item data, CVars) are logged with ◆.</p>
             <div class="chips" id="event-chips"></div>
             <h4>Custom event</h4>
             <form id="event-form" class="row">
@@ -100,8 +100,8 @@
 
           <div class="pane" id="pane-addons">
             <div id="addon-list"></div>
-            <div class="pane-bar"><button id="btn-reset-sv" class="mini danger">Reset all SavedVariables</button></div>
-            <p class="muted">SavedVariables live in this browser (localStorage) and survive reloads, like <code>WTF/</code> would.</p>
+            <div class="pane-bar"><button id="btn-reset-sv" class="mini danger">Reset all SavedVariables</button><button id="btn-reset-client" class="mini danger">Reset CVars &amp; key bindings</button></div>
+            <p class="muted">SavedVariables, changed CVars and key bindings live in this browser (localStorage) and survive reloads, like <code>WTF/</code> would.</p>
           </div>
         </aside>
       </main>

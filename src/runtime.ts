@@ -4,18 +4,28 @@ import core from "./lua/00_core.lua?raw"
 import frames from "./lua/10_frames.lua?raw"
 import xml from "./lua/20_xml.lua?raw"
 import api from "./lua/30_api.lua?raw"
+import items from "./lua/40_items.lua?raw"
+import bags from "./lua/41_bags.lua?raw"
+import loot from "./lua/42_loot.lua?raw"
+import settings from "./lua/45_settings.lua?raw"
+import bindings from "./lua/46_bindings.lua?raw"
 import type { Addon } from "./addons"
 import { normKey } from "./addons"
 import { measureHeight, measureWidth } from "./fonts"
 import type { Snapshot } from "./render"
 
-const PRELUDE = [core, frames, xml, api].join("\n")
+const PRELUDE = [core, frames, xml, api, items, bags, loot, settings, bindings].join("\n")
 
 export type LogKind = "chat" | "error" | "warn" | "info" | "ui"
 
 export interface RuntimeHost {
   log(kind: LogKind, text: string, r?: number, g?: number, b?: number): void
   requestReload(): void
+  /** An event fired by the sandbox's game simulation (loot, bags, CVars…), for the Events tab. */
+  gameEvent(text: string): void
+  /** Client-side state that outlives a reload, like Config.wtf / bindings-cache.wtf (CVars, key bindings). */
+  persist(key: string, json: string): void
+  restore(key: string): string | undefined
 }
 
 interface XmlNode { t: string; a: Record<string, string>; c: XmlNode[]; x?: string }
@@ -65,6 +75,9 @@ export class Runtime {
     lua.global.set("__measureW", (t: string, p: string, s: number, f: string) => measureWidth(String(t), p, s, f))
     lua.global.set("__measureH", (t: string, p: string, s: number, f: string, w: number) => measureHeight(String(t), p, s, f, w))
     lua.global.set("__reload", () => this.host.requestReload())
+    lua.global.set("__logEvent", (text: string) => this.host.gameEvent(String(text)))
+    lua.global.set("__persist", (key: string, json: string) => this.host.persist(String(key), String(json)))
+    lua.global.set("__restore", (key: string) => this.host.restore(String(key)))
     lua.global.set("__readFile", (addon: string, path: string) => byName.get(addon)?.text.get(normKey(path)))
     lua.global.set("__readXml", (addon: string, path: string) => {
       const src = byName.get(addon)?.text.get(normKey(path))
@@ -102,6 +115,22 @@ export class Runtime {
       this.host.log("error", `[sandbox] ${name}: ${(e as Error).message}`)
       return undefined
     }
+  }
+
+  /** Call any global Lua function of the sandbox (loot, bags… helpers). Errors go to the console. */
+  invoke(name: string, ...args: unknown[]): unknown {
+    if (!this.ready || !this.lua) return undefined
+    const f = this.lua.global.get(name) as LuaFn | undefined
+    if (typeof f !== "function") return undefined
+    try { return f(...args) } catch (e) {
+      this.host.log("error", `[sandbox] ${name}: ${(e as Error).message}`)
+      return undefined
+    }
+  }
+  /** invoke() for helpers that return JSON. */
+  query<T>(name: string, ...args: unknown[]): T | null {
+    const j = this.invoke(name, ...args)
+    return typeof j === "string" ? (JSON.parse(j) as T) : null
   }
 
   tick(dt: number) { if (this.ready) this.call("__Tick", dt) }
