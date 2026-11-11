@@ -1,5 +1,5 @@
 import { fontFamily, stripEscapes } from "./fonts"
-import { lookupEdge, lookupTexture, rgba, solidOf, type AssetLookup } from "./textures"
+import { lookupEdge, lookupTexture, normalizePath, rgba, solidOf, type AssetLookup } from "./textures"
 
 export interface Item {
   id: number
@@ -414,6 +414,32 @@ export class Renderer {
   }
 }
 
+// Stand-ins for Blizzard textures commonly used inline in text.
+const INLINE_KNOWN: Record<string, { cls: string; text?: string }> = {
+  "interface\\moneyframe\\ui-goldicon": { cls: "coin gold" },
+  "interface\\moneyframe\\ui-silvericon": { cls: "coin silver" },
+  "interface\\moneyframe\\ui-coppericon": { cls: "coin copper" },
+  "interface\\raidframe\\readycheck-ready": { cls: "glyph ok", text: "✔" },
+  "interface\\raidframe\\readycheck-notready": { cls: "glyph no", text: "✘" },
+  "interface\\raidframe\\readycheck-waiting": { cls: "glyph wait", text: "?" },
+}
+
+/** An inline |Tpath:height:width…|t texture, sized like the game (0 = font size) so it matches fonts.ts measurements. */
+function inlineTexture(spec: string): HTMLElement {
+  const i = document.createElement("span")
+  const parts = spec.split(":")
+  const path = parts[0]
+  const known = INLINE_KNOWN[normalizePath(path)]
+  i.className = "inline-tex" + (known ? " " + known.cls : "")
+  if (known?.text) i.textContent = known.text
+  i.title = path
+  const h = Number(parts[1]) || 0
+  const w = parts[2] !== undefined && parts[2] !== "" ? Number(parts[2]) || 0 : h
+  i.style.height = h ? h + "px" : "1em"
+  i.style.width = w ? w + "px" : h ? h + "px" : "1em"
+  return i
+}
+
 /** Render WoW text escapes (|cAARRGGBB, |r, |n, |T..|t, hyperlinks) into DOM. */
 export function rich(container: HTMLElement, text: string) {
   container.textContent = ""
@@ -434,12 +460,7 @@ export function rich(container: HTMLElement, text: string) {
     else if (m[0] === "|r") color = null
     else if (m[0] === "|n") container.appendChild(document.createTextNode("\n"))
     else if (m[0] === "||") push("|")
-    else if (m[2] !== undefined) {
-      const i = document.createElement("span")
-      i.className = "inline-tex"
-      i.title = m[2].split(":")[0]
-      container.appendChild(i)
-    }
+    else if (m[2] !== undefined) container.appendChild(inlineTexture(m[2]))
   }
   push(text.slice(last))
   if (!container.childNodes.length) container.textContent = stripEscapes(text)

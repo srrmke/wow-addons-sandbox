@@ -216,12 +216,34 @@ function AbbreviateNumbers(n)
   return tostring(math.floor(n))
 end
 AbbreviateLargeNumbers = AbbreviateNumbers
-function GetMoneyString(c)
-  local g, s, cc = math.floor(c / 10000), math.floor(c / 100) % 100, c % 100
-  return string.format("%dg %ds %dc", g, s, cc)
+GOLD_AMOUNT_TEXTURE = "%d|TInterface\\MoneyFrame\\UI-GoldIcon:0:0:2:0|t"
+SILVER_AMOUNT_TEXTURE = "%d|TInterface\\MoneyFrame\\UI-SilverIcon:0:0:2:0|t"
+COPPER_AMOUNT_TEXTURE = "%d|TInterface\\MoneyFrame\\UI-CopperIcon:0:0:2:0|t"
+local function coinParts(c)
+  c = math.floor(c or 0)
+  return math.floor(c / 10000), math.floor(c / 100) % 100, c % 100
 end
-GetCoinText = GetMoneyString
-GetCoinTextureString = GetMoneyString
+function GetCoinTextureString(c)
+  local g, s, cc = coinParts(c)
+  local parts = {}
+  if g > 0 then parts[#parts + 1] = string.format(GOLD_AMOUNT_TEXTURE, g) end
+  if s > 0 then parts[#parts + 1] = string.format(SILVER_AMOUNT_TEXTURE, s) end
+  if cc > 0 or #parts == 0 then parts[#parts + 1] = string.format(COPPER_AMOUNT_TEXTURE, cc) end
+  return table.concat(parts, " ")
+end
+function GetMoneyString(c, separateThousands)
+  local s = GetCoinTextureString(c)
+  if separateThousands then s = string.gsub(s, "^(%d+)", function(n) return BreakUpLargeNumbers(tonumber(n)) end) end
+  return s
+end
+function GetCoinText(c, sep)
+  local g, s, cc = coinParts(c)
+  local parts = {}
+  if g > 0 then parts[#parts + 1] = g .. " Gold" end
+  if s > 0 then parts[#parts + 1] = s .. " Silver" end
+  if cc > 0 or #parts == 0 then parts[#parts + 1] = cc .. " Copper" end
+  return table.concat(parts, sep or ", ")
+end
 function SecondsToTime(s)
   s = math.floor(s)
   if s >= 3600 then return string.format("%d hr %d min", s // 3600, (s % 3600) // 60) end

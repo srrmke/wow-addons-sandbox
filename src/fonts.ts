@@ -38,22 +38,49 @@ function measureLine(line: string, path: string, size: number, flags: string): n
   return w
 }
 
+/** Size in pixels of an inline |Tpath:height:width:...|t texture. Height 0 (or none) means the font size; width defaults to height. */
+export function inlineTextureSize(spec: string, fontSize: number): { w: number; h: number } {
+  const p = spec.split(":")
+  const h = Number(p[1]) || 0
+  const w = p[2] !== undefined && p[2] !== "" ? Number(p[2]) || 0 : h
+  const hh = h || fontSize
+  return { w: w || hh, h: hh }
+}
+
+// Inline textures become private-use characters (U+E000 + index) so lines can be measured and wrapped with them.
+const PUA = 0xe000
+const PUA_RE = /[-]/g
+function withIcons(text: string, size: number): { text: string; icons: number[] } {
+  const icons: number[] = []
+  const out = text.replace(/\|T([^|]*)\|t/g, (_m, spec: string) => {
+    icons.push(inlineTextureSize(spec, size).w)
+    return String.fromCharCode(PUA + Math.min(icons.length - 1, 0x18ff))
+  })
+  return { text: stripEscapes(out), icons }
+}
+function lineWidth(line: string, icons: number[], path: string, size: number, flags: string): number {
+  let extra = 0
+  const plain = line.replace(PUA_RE, (c) => { extra += icons[c.charCodeAt(0) - PUA] ?? size; return "" })
+  return measureLine(plain, path, size, flags) + extra
+}
+
 export function measureWidth(text: string, path: string, size: number, flags: string): number {
+  const { text: t, icons } = withIcons(text, size)
   let max = 0
-  for (const line of stripEscapes(text).split("\n")) max = Math.max(max, measureLine(line, path, size, flags))
+  for (const line of t.split("\n")) max = Math.max(max, lineWidth(line, icons, path, size, flags))
   return max
 }
 
 export function measureHeight(text: string, path: string, size: number, flags: string, wrapWidth: number): number {
-  const lines = stripEscapes(text).split("\n")
+  const { text: t, icons } = withIcons(text, size)
   let count = 0
-  for (const line of lines) {
+  for (const line of t.split("\n")) {
     if (!wrapWidth || wrapWidth <= 0) { count++; continue }
     let cur = ""
     let n = 1
     for (const word of line.split(" ")) {
       const next = cur ? cur + " " + word : word
-      if (cur && measureLine(next, path, size, flags) > wrapWidth) { n++; cur = word } else cur = next
+      if (cur && lineWidth(next, icons, path, size, flags) > wrapWidth) { n++; cur = word } else cur = next
     }
     count += n
   }
