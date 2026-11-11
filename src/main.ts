@@ -440,6 +440,9 @@ function buildGameForm() {
   const gc = grp("Context")
   gc.insertAdjacentHTML("beforeend", `<label class="plain">In combat <input type="checkbox" id="g-combat" ${mock.combat ? "checked" : ""} /></label>
     <p class="muted">Hold Shift / Ctrl / Alt over the stage to drive <code>IsShiftKeyDown()</code> and friends.</p>`)
+  gc.append(h("div", { className: "row" },
+    h("button", { className: "mini", onclick: () => runtime.invoke("__ToggleSettings") }, "Options window"),
+    h("button", { className: "mini", onclick: () => runtime.invoke("ToggleBackpack") }, "Backpack")))
 
   const num = (id: string) => Number(($(id) as HTMLInputElement).value)
   const label = (id: string, text: string) => { $(id).textContent = text }
