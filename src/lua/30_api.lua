@@ -107,13 +107,9 @@ function GetSpellTexture(id) local s = spells[id] return s and s[2] or 134400 en
 function GetSpellLink(id) return "|cff71d5ff|Hspell:" .. id .. "|h[" .. (GetSpellInfo(id)) .. "]|h|r" end
 function IsSpellKnown() return true end
 function GetSpellCooldown() return 0, 0, 1 end
-function GetItemInfo() return nil end
-function GetItemInfoInstant() return nil end
-function GetItemCount() return 0 end
-function GetItemIcon() return 134400 end
+-- Items (GetItemInfo, C_Item, Item mixin) live in 40_items.lua.
 C_Spell = { GetSpellInfo = function(id) local n, _, ic = GetSpellInfo(id) return { name = n, iconID = ic, spellID = id } end,
   GetSpellTexture = GetSpellTexture, GetSpellName = function(id) return (GetSpellInfo(id)) end }
-C_Item = { GetItemInfo = GetItemInfo, GetItemCount = GetItemCount, GetItemIconByID = GetItemIcon }
 C_CVar = { GetCVar = GetCVar, SetCVar = SetCVar, GetCVarBool = GetCVarBool }
 C_Map = { GetBestMapForUnit = function() return 1 end, GetMapInfo = function() return { name = "Sandbox Isle", mapID = 1 } end }
 C_ClassColor = { GetClassColor = function(c) return RAID_CLASS_COLORS[c] end }

@@ -4,18 +4,21 @@ import core from "./lua/00_core.lua?raw"
 import frames from "./lua/10_frames.lua?raw"
 import xml from "./lua/20_xml.lua?raw"
 import api from "./lua/30_api.lua?raw"
+import items from "./lua/40_items.lua?raw"
 import type { Addon } from "./addons"
 import { normKey } from "./addons"
 import { measureHeight, measureWidth } from "./fonts"
 import type { Snapshot } from "./render"
 
-const PRELUDE = [core, frames, xml, api].join("\n")
+const PRELUDE = [core, frames, xml, api, items].join("\n")
 
 export type LogKind = "chat" | "error" | "warn" | "info" | "ui"
 
 export interface RuntimeHost {
   log(kind: LogKind, text: string, r?: number, g?: number, b?: number): void
   requestReload(): void
+  /** An event fired by the sandbox's game simulation (loot, bags, CVars…), for the Events tab. */
+  gameEvent(text: string): void
 }
 
 interface XmlNode { t: string; a: Record<string, string>; c: XmlNode[]; x?: string }
@@ -65,6 +68,7 @@ export class Runtime {
     lua.global.set("__measureW", (t: string, p: string, s: number, f: string) => measureWidth(String(t), p, s, f))
     lua.global.set("__measureH", (t: string, p: string, s: number, f: string, w: number) => measureHeight(String(t), p, s, f, w))
     lua.global.set("__reload", () => this.host.requestReload())
+    lua.global.set("__logEvent", (text: string) => this.host.gameEvent(String(text)))
     lua.global.set("__readFile", (addon: string, path: string) => byName.get(addon)?.text.get(normKey(path)))
     lua.global.set("__readXml", (addon: string, path: string) => {
       const src = byName.get(addon)?.text.get(normKey(path))

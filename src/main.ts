@@ -71,6 +71,7 @@ function setStatus(text: string, kind: "" | "ok" | "bad" = "") {
 const runtime = new Runtime({
   log: addLog,
   requestReload: () => setTimeout(() => void reload("ReloadUI"), 0),
+  gameEvent: (text) => logEvent(text, true),
 })
 
 const stage = $("stage")
@@ -370,14 +371,20 @@ const EVENTS: { name: string; args?: unknown[]; mock?: unknown }[] = [
   { name: "PLAYER_LOGOUT" },
 ]
 const eventLog = $("event-log")
+/** fromGame: fired by the sandbox's own simulation (loot, bags, CVars…) rather than from this panel. */
+function logEvent(text: string, fromGame = false) {
+  const d = document.createElement("div")
+  d.className = "l" + (fromGame ? " game" : "")
+  d.textContent = `${stamp()}  ${fromGame ? "◆ " : ""}${text}`
+  const stick = eventLog.scrollTop + eventLog.clientHeight >= eventLog.scrollHeight - 30
+  eventLog.appendChild(d)
+  while (eventLog.childElementCount > 400) eventLog.firstElementChild!.remove()
+  if (stick) eventLog.scrollTop = eventLog.scrollHeight
+}
 function fireEvent(name: string, args: unknown[] = [], mock?: unknown) {
   if (mock) runtime.setMock(mock)
   runtime.fire(name, ...args)
-  const d = document.createElement("div")
-  d.className = "l"
-  d.textContent = `${stamp()}  ${name}(${args.map((a) => JSON.stringify(a)).join(", ")})`
-  eventLog.appendChild(d)
-  eventLog.scrollTop = eventLog.scrollHeight
+  logEvent(`${name}(${args.map((a) => JSON.stringify(a)).join(", ")})`)
 }
 $("event-chips").replaceChildren(...EVENTS.map((ev) => {
   const b = document.createElement("button")
