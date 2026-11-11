@@ -110,7 +110,86 @@ function GetSpellCooldown() return 0, 0, 1 end
 -- Items (GetItemInfo, C_Item, Item mixin) live in 40_items.lua.
 C_Spell = { GetSpellInfo = function(id) local n, _, ic = GetSpellInfo(id) return { name = n, iconID = ic, spellID = id } end,
   GetSpellTexture = GetSpellTexture, GetSpellName = function(id) return (GetSpellInfo(id)) end }
-C_CVar = { GetCVar = GetCVar, SetCVar = SetCVar, GetCVarBool = GetCVarBool }
+
+---------------------------------------------------------------------------
+-- CVars: stored values, defaults, CVAR_UPDATE. Changed values persist across reloads (like Config.wtf).
+---------------------------------------------------------------------------
+do
+  local defaults = {
+    autoLootDefault = "0", lootUnderMouse = "0", autoInteract = "0", interactOnLeftClick = "0",
+    Sound_EnableAllSound = "1", Sound_EnableSFX = "1", Sound_EnableMusic = "1", Sound_EnableAmbience = "1", Sound_EnableDialog = "1",
+    Sound_MasterVolume = "1.0", Sound_SFXVolume = "1.0", Sound_MusicVolume = "0.4", Sound_AmbienceVolume = "0.6", Sound_DialogVolume = "1.0",
+    uiScale = "1.0", useUiScale = "0", scriptErrors = "1", taintLog = "0", showTutorials = "0", colorblindMode = "0",
+    nameplateShowEnemies = "1", nameplateShowFriends = "0", nameplateShowAll = "1", UnitNameOwn = "0", UnitNameNPC = "0",
+    enableFloatingCombatText = "0", floatingCombatTextCombatDamage = "1", ActionButtonUseKeyDown = "1", lockActionBars = "1",
+    alwaysShowActionBars = "0", autoSelfCast = "1", autoQuestWatch = "1", showTargetOfTarget = "1", chatStyle = "im",
+    cameraDistanceMaxZoomFactor = "1.9", textLocale = "enUS", audioLocale = "enUS", portal = "US",
+  }
+  local values, warned = {}, {}
+  local function key(name) return type(name) == "string" and string.lower(name) or nil end
+  local canon = {}
+  for k, v in pairs(defaults) do canon[string.lower(k)] = k values[string.lower(k)] = v end
+  local saved = __restore and __restore("cvars")
+  local savedT = saved and __unjson(saved) or {}
+  for k, v in pairs(savedT) do values[string.lower(k)] = tostring(v) canon[string.lower(k)] = canon[string.lower(k)] or k end
+
+  local function persist()
+    if not __persist then return end
+    local out = {}
+    for k, v in pairs(values) do
+      local name = canon[k] or k
+      if defaults[name] ~= v then out[name] = v end
+    end
+    __persist("cvars", __json(out))
+  end
+
+  function GetCVar(name)
+    local k = key(name)
+    if not k then return nil end
+    local v = values[k]
+    if v == nil and not warned[k] then
+      warned[k] = true
+      __log("warn", "CVar '" .. tostring(name) .. "' isn't emulated, GetCVar returns nil. Give it a value with /run SetCVar('" .. tostring(name) .. "', 1)")
+    end
+    return v
+  end
+  function GetCVarBool(name)
+    local v = GetCVar(name)
+    if v == nil then return nil end
+    return v ~= "0" and v ~= "" and string.lower(v) ~= "false"
+  end
+  function GetCVarDefault(name) local k = key(name) return k and defaults[canon[k] or ""] end
+  function SetCVar(name, value)
+    local k = key(name)
+    if not k then return false end
+    if type(value) == "boolean" then value = value and "1" or "0" end
+    value = tostring(value == nil and "" or value)
+    canon[k] = canon[k] or name
+    if values[k] == value then return true end
+    values[k] = value
+    persist()
+    if __GameEvent then __GameEvent("CVAR_UPDATE", canon[k], value) else __FireEvent("CVAR_UPDATE", canon[k], value) end
+    return true
+  end
+  function RegisterCVar(name, default)
+    local k = key(name)
+    if not k then return end
+    canon[k] = canon[k] or name
+    if default ~= nil and defaults[canon[k]] == nil then defaults[canon[k]] = tostring(default) end
+    if values[k] == nil then values[k] = default ~= nil and tostring(default) or "" end
+  end
+  function GetCVarInfo(name)
+    local v = GetCVar(name)
+    if v == nil then return nil end
+    return v, GetCVarDefault(name), false, false, false, false, false
+  end
+
+  C_CVar = {
+    GetCVar = GetCVar, SetCVar = SetCVar, GetCVarBool = GetCVarBool, GetCVarDefault = GetCVarDefault,
+    RegisterCVar = RegisterCVar, GetCVarInfo = GetCVarInfo,
+    GetCVarNumberOrDefault = function(name) return tonumber(GetCVar(name)) or tonumber(GetCVarDefault(name)) or 0 end,
+  }
+end
 C_Map = { GetBestMapForUnit = function() return 1 end, GetMapInfo = function() return { name = "Sandbox Isle", mapID = 1 } end }
 C_ClassColor = { GetClassColor = function(c) return RAID_CLASS_COLORS[c] end }
 function GetRealZoneText() return "Sandbox Isle" end

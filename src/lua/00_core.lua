@@ -140,9 +140,7 @@ function IsLoggedIn() return true end
 function GetLocale() return "enUS" end
 function GetRealmName() return "Sandbox" end
 function GetNormalizedRealmName() return "Sandbox" end
-function GetCVar() return "1" end
-function GetCVarBool() return true end
-function SetCVar() end
+-- CVars (GetCVar, SetCVar, C_CVar…) are stored for real in 30_api.lua.
 function IsMacClient() return false end
 function IsWindowsClient() return true end
 function InCombatLockdown() return __mock.combat and true or false end

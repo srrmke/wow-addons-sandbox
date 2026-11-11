@@ -19,6 +19,9 @@ export interface RuntimeHost {
   requestReload(): void
   /** An event fired by the sandbox's game simulation (loot, bags, CVars…), for the Events tab. */
   gameEvent(text: string): void
+  /** Client-side state that outlives a reload, like Config.wtf / bindings-cache.wtf (CVars, key bindings). */
+  persist(key: string, json: string): void
+  restore(key: string): string | undefined
 }
 
 interface XmlNode { t: string; a: Record<string, string>; c: XmlNode[]; x?: string }
@@ -69,6 +72,8 @@ export class Runtime {
     lua.global.set("__measureH", (t: string, p: string, s: number, f: string, w: number) => measureHeight(String(t), p, s, f, w))
     lua.global.set("__reload", () => this.host.requestReload())
     lua.global.set("__logEvent", (text: string) => this.host.gameEvent(String(text)))
+    lua.global.set("__persist", (key: string, json: string) => this.host.persist(String(key), String(json)))
+    lua.global.set("__restore", (key: string) => this.host.restore(String(key)))
     lua.global.set("__readFile", (addon: string, path: string) => byName.get(addon)?.text.get(normKey(path)))
     lua.global.set("__readXml", (addon: string, path: string) => {
       const src = byName.get(addon)?.text.get(normKey(path))

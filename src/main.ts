@@ -72,6 +72,8 @@ const runtime = new Runtime({
   log: addLog,
   requestReload: () => setTimeout(() => void reload("ReloadUI"), 0),
   gameEvent: (text) => logEvent(text, true),
+  persist: (key, json) => { try { localStorage.setItem(`wowsb:state:${key}`, json) } catch { /* storage unavailable */ } },
+  restore: (key) => { try { return localStorage.getItem(`wowsb:state:${key}`) ?? undefined } catch { return undefined } },
 })
 
 const stage = $("stage")
@@ -553,6 +555,11 @@ $("btn-reset-sv").addEventListener("click", () => {
   writeJson("wowsb:sv", svCache)
   addLog("info", "SavedVariables cleared — reloading")
   void reload("Reset SavedVariables", { rescan: false })
+})
+$("btn-reset-client").addEventListener("click", () => {
+  for (const key of ["cvars", "bindings"]) { try { localStorage.removeItem(`wowsb:state:${key}`) } catch { /* ignore */ } }
+  addLog("info", "CVars and key bindings reset to defaults — reloading")
+  void reload("Reset client settings", { rescan: false })
 })
 
 // -------------------------------------------------------------- main loop
